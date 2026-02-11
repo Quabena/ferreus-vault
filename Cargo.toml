@@ -1,2 +1,45 @@
 [package]
-name = "ferreus-vault"
+name = "ferreus_vault"
+version = "0.1.0"
+edition = "2021"
+authors = ["Evans Adu"]
+description = "A high-assurance, offline password vault"
+license = "GPL-3.0-only"
+repository = "https://github.com/Quabena/ferreus-vault/core"
+readme = "README.md"
+
+[dependencies]
+# Core cryptography
+argon2 = { version = "0.5", features = ["std"] }
+chacha20poly1305 = { version = "0.10", features = ["std"] }
+rand_core = { version = "0.6", features = ["std"] }
+getrandom = "0.2"
+zeroize = { version = "1.6", features = ["zeroize_derive"] }
+
+# Serialization and data handling
+serde = { version = "1.0", features = ["derive", "rc"] }
+bincode = "1.3"
+chrono = { version = "0.4", features = ["serde"] }
+
+# Error handling
+thiserror = "1.0"
+anyhow = "1.0"
+
+# Logging (for debugging, will be compiled out in release)
+log = "0.4"
+env_logger = "0.10"
+
+[dev-dependencies]
+tempfile = "3.4"
+hex = "0.4"
+serial_test = "3.3"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = 'abort'
+
+[profile.dev]
+opt-level = 0
+debug = true

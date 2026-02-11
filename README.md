@@ -1,4 +1,4 @@
-# Ferreus Vault 🔒
+# Ferreus Vault
 
 **High-Assurance Offline Password Vault**
 
@@ -15,18 +15,18 @@ This software **never connects to the internet** — by design, not by configura
 
 ### What Ferreus Vault _Is_
 
-- ✅ **Offline-only** — no network access, no cloud sync, no telemetry
-- ✅ **Memory-safe** — written in Rust with a strict security posture
-- ✅ **Minimal** — fewer features, fewer attack surfaces
-- ✅ **Transparent** — open source and auditable
-- ✅ **Disciplined** — security through deliberate exclusion
+- **Offline-only** — no network access, no cloud sync, no telemetry
+- **Memory-safe** — written in Rust with a strict security posture
+- **Minimal** — fewer features, fewer attack surfaces
+- **Transparent** — open source and auditable
+- **Disciplined** — security through deliberate exclusion
 
 ### What Ferreus Vault _Is Not_
 
-- ❌ A cloud password manager
-- ❌ A multi-device sync solution
-- ❌ A recovery-based system
-- ❌ A convenience-first product
+- A cloud password manager
+- A multi-device sync solution
+- A recovery-based system
+- A convenience-first product
 
 If you forget your master password, **your data cannot be recovered**.
 
