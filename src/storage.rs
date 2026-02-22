@@ -24,12 +24,10 @@
 //! - Maintain audit-friendly behaviour
 
 use std::fs;
-use std::io::{write, Write};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use anyhow::Ok;
 use zeroize::Zeroizing;
-use Zeroize::Zeroizing;
 
 use crate::crypto::{EncryptedVault, MasterKey};
 use crate::errors::VaultError;
@@ -52,23 +50,21 @@ impl VaultStorage {
     }
 
     /* ------------------- Vault Creation --------------- */
-
     pub fn create_vault(
         &self,
         master_password: &str,
         vault_data: &VaultData,
     ) -> Result<(), VaultError> {
         let master_key = MasterKey::from_password(master_password)?;
-
         self.save_vault(vault_data, &master_key)
     }
 
     /* --------------------- Vault Loading --------------------- */
-
     pub fn load_vault(&self, master_password: &str) -> Result<(VaultData, MasterKey), VaultError> {
-        let vault_bytes = fs::read(&self.vault_path)?;
+        let vault_bytes = fs::read(&self.vault_path).map_err(VaultError::IoError)?;
 
-        let encrypted_vault = EncryptedVault::from_bytes(&vault_bytes)?;
+        let encrypted_vault =
+            EncryptedVault::from_bytes(&vault_bytes).map_err(|_| VaultError::SerializationError)?;
 
         // Validate version early
         if encrypted_vault.version != EncryptedVault::CURRENT_VERSION {
@@ -80,46 +76,47 @@ impl VaultStorage {
 
         let decrypted_bytes = encrypted_vault.decrypt(&master_key)?;
 
-        let vault_data: VaultData = bincode::deserialize(&decrypted_bytes)?;
+        let vault_data: VaultData =
+            bincode::deserialize(&decrypted_bytes).map_err(|_| VaultError::SerializationError)?;
 
         Ok((vault_data, master_key))
     }
 
     /* ------------------- Vault Save ----------------------- */
-
     pub fn save_vault(
         &self,
         vault_data: &VaultData,
         master_key: &MasterKey,
     ) -> Result<(), VaultError> {
         // Serialize plaintext vault into zeroizing buffer
-        let serialized = Zeroizing::new(bincode::serialize(vault_data)?);
+        let serialized = Zeroizing::new(
+            bincode::serialize(vault_data).map_err(|_| VaultError::SerializationError)?,
+        );
 
         let encrypted_vault = EncryptedVault::encrypt(&serialized, master_key)?;
 
-        let vault_bytes = encrypted_vault.to_bytes()?;
+        let vault_bytes = encrypted_vault
+            .to_bytes()
+            .map_err(|_| VaultError::SerializationError)?;
 
         self.atomic_write(&vault_bytes)
     }
 
-    /* ------------------- Atromic Write ----------------------- */
-
+    /* ------------------- Atomic Write ----------------------- */
     fn atomic_write(&self, data: &[u8]) -> Result<(), VaultError> {
         let temp_path = self.vault_path.with_extension("tmp");
 
         {
-            let mut file = fs::File::create(&temp_path)?;
-            file.write_all(data)?;
-            file.sync_all()?;
+            let mut file = fs::File::create(&temp_path).map_err(VaultError::IoError)?;
+            file.write_all(data).map_err(VaultError::IoError)?;
+            file.sync_all().map_err(VaultError::IoError)?;
         }
 
-        fs::rename(temp_path, &self.vault_path)?;
-
+        fs::rename(temp_path, &self.vault_path).map_err(VaultError::IoError)?;
         Ok(())
     }
 
     /* ------------------- Helpers ----------------------- */
-
     pub fn vault_exists(&self) -> bool {
         self.vault_path.exists()
     }
@@ -130,12 +127,10 @@ impl VaultStorage {
 }
 
 /* ------------------- Backup Filename Utility ----------------------- */
-
 pub fn generate_backup_filename(base_path: &Path) -> PathBuf {
     use chrono::Local;
 
     let timestamp = Local::now().format("%Y%m%d_%H%M%S");
-
     let base_name = base_path
         .file_name()
         .and_then(|n| n.to_str())
@@ -159,14 +154,8 @@ pub fn generate_backup_filename(base_path: &Path) -> PathBuf {
     backup_path
 }
 
-/* ------------------- Vault Save ----------------------- */
-
-/// Deletes a vault file.
-///
-/// NOTE:
-/// Reliable secure deletion is not guaranteed on mordern filesystems
-/// FerreusVault intentionally avoids providing false guarantees.
+/* ------------------- Vault Deletion ----------------------- */
 pub fn delete_vault_file(path: &Path) -> Result<(), VaultError> {
-    fs::remove_file(path)?;
+    fs::remove_file(path).map_err(VaultError::IoError)?;
     Ok(())
 }

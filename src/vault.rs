@@ -12,10 +12,10 @@
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 
 //! Core vault data structures
-//! 
+//!
 //! This module defines the plaintext in-memory representation of vault data
 //! The entire structure is expected to be serialized and encrypted as a single unit
-//! 
+//!
 //! Security goals:
 //! - Sensitive fields are zeroized on drop
 //! - Schema is versioned for forward compatibility
@@ -55,17 +55,12 @@ pub struct PasswordEntry {
 
     /// Last modification timestamp
     #[zeroize(skip)]
-    pub updated_at: DateTime<Utc>
+    pub updated_at: DateTime<Utc>,
 }
 
 impl PasswordEntry {
     /// Create a new vault entry with current timestamp
-    pub fn new(
-        account_name: String,
-        username: String,
-        password: String,
-        notes: String,
-    ) -> Self {
+    pub fn new(account_name: String, username: String, password: String, notes: String) -> Self {
         let now = Utc::now();
 
         Self {
@@ -73,13 +68,13 @@ impl PasswordEntry {
             username,
             password,
             notes,
-            created_at,
-            updated_at,
+            created_at: now,
+            updated_at: now,
         }
     }
 
     /// Updates selected fields of an entry
-    /// 
+    ///
     /// The timestamp is automatically refreshed if any field changes
     pub fn update(
         &mut self,
@@ -117,7 +112,7 @@ impl PasswordEntry {
 }
 
 /// Top-level plaintext vault container
-/// 
+///
 /// This structure is serialized and encrypted as a unit
 #[derive(Debug, Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
 pub struct VaultData {
@@ -136,7 +131,7 @@ pub struct VaultData {
     pub last_modified: DateTime<Utc>,
 }
 
-impl Vault {
+impl VaultData {
     /// Current vault schema version
     pub const CURRENT_VERSION: u32 = 1;
 
@@ -166,7 +161,7 @@ impl Vault {
 
         let removed = self.entries.remove(index);
         self.touch();
-        ok(removed)
+        Ok(removed)
     }
 
     /// Updates an entry by index
@@ -179,35 +174,35 @@ impl Vault {
         notes: Option<String>,
     ) -> Result<(), VaultError> {
         let entry = self
-        .entries
-        .get_mut(index)
-        .ok_or(VaultError::EntryNotFound)?;
+            .entries
+            .get_mut(index)
+            .ok_or(VaultError::EntryNotFound)?;
 
-    entry.update(account_name, username, password, notes);
-    self.touch();
+        entry.update(account_name, username, password, notes);
+        self.touch();
 
-    Ok(())
+        Ok(())
     }
 
-    /// Retrieves an entry by index
-    pub fn get_entry(&self, index: usize) -> Option<PasswordEntry> {
+    /// Retrieves an entry by index.
+    pub fn get_entry(&self, index: usize) -> Option<&PasswordEntry> {
         self.entries.get(index)
     }
 
     /// Case-insensitive search across selected fields
-    /// 
+    ///
     /// This operates on decrypted in-memory data only
     pub fn find_entries(&self, query: &str) -> Vec<&PasswordEntry> {
         let query_lower = query.to_lowercase();
 
         self.entries
-        .iter()
-        .filter(|entry| {
-            entry.account_name.to_lowercase().contains(&query_lower)
-            || entry.username.to_lowercase().contains(&query_lower)
-            || entry.notes.to_lowercase().contains(&query_lower)
-        })
-        .collect()
+            .iter()
+            .filter(|entry| {
+                entry.account_name.to_lowercase().contains(&query_lower)
+                    || entry.username.to_lowercase().contains(&query_lower)
+                    || entry.notes.to_lowercase().contains(&query_lower)
+            })
+            .collect()
     }
 
     /// Updates the vault-level modification timestamp

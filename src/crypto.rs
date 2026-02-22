@@ -75,7 +75,7 @@ impl MasterKey {
         let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
         let mut key = Zeroizing::new([0u8; KEY_LENGTH]);
 
-        argon2.hash_password_into(password.as_bytes(), salt, &mut key)?;
+        argon2.hash_password_into(password.as_bytes(), salt, key.as_mut())?;
 
         Ok(Self {
             key,
@@ -132,7 +132,7 @@ impl EncryptedVault {
         let plaintext =
             cipher.decrypt(XNonce::from_slice(&self.nonce), self.ciphertext.as_ref())?;
 
-        ok(Zeroizing::new(plaintext))
+        Ok(Zeroizing::new(plaintext))
     }
 
     pub fn to_bytes(&self) -> Result<Vec<u8>, VaultError> {
@@ -150,7 +150,7 @@ impl EncryptedVault {
 pub fn estimate_password_strength(password: &str) -> f64 {
     let length = password.len() as f64;
 
-    let mut charset = 0.0;
+    let mut charset: f64 = 0.0;
 
     if password.chars().any(|c| c.is_lowercase()) {
         charset += 26.0;

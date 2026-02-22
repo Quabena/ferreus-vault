@@ -11,7 +11,6 @@
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 
-
 //! Centralized error definitions for FerreusVault
 //!
 //! Design goals:
@@ -22,31 +21,36 @@
 
 use std::io;
 use thiserror::Error;
-use zeroize::Zeroize;
 
-/// All recoverable erros that can occur while using the vault.
+/// All recoverable errors that can occur while using the vault.
 ///
 /// This enum is intentionally small and explicit. If an error does not
 /// clearly belong here, it likely indicates a design issue upstream.
-#[derive(Error, Debug, Zeroize)]
-#[zeroize(drop)]
+///
+/// All variants are deliberately generic to avoid leaking sensitive
+/// implementation details (e.g., cryptographic failure reasons).
+#[derive(Error, Debug)]
 pub enum VaultError {
     /// Cryptographic failure (key derivation, encryption, authentication).
     ///
-    /// The inner message is intentionally generic and should never include
-    /// secrets or raw cyptographic material.
+    /// The inner cause is intentionally discarded to:
+    /// - Prevent oracle-style information leaks
+    /// - Avoid exposing algorithm-specific behavior
     #[error("Cryptographic error")]
     CryptoError,
-    
-    /// Failure during serialization or deserialization of vault data
+
+    /// Failure during serialization or deserialization of vault data.
     ///
-    /// Typically indicates a corrupted vault file or incompatible format
+    /// Typically indicates:
+    /// - Corrupted vault file
+    /// - Incompatible format version
+    /// - Unexpected structural mismatch
     #[error("Serialization error")]
     SerializationError,
 
-    /// The supplied master password failed authentication
+    /// The supplied master password failed authentication.
     ///
-    /// This error is deliberately non-specific to avoid oracle-style leaks.
+    /// This error is deliberately non-specific to avoid password oracle leaks.
     #[error("Invalid password")]
     InvalidPassword,
 
@@ -59,30 +63,41 @@ pub enum VaultError {
     IoError(#[from] io::Error),
 
     /// Requested entry does not exist in the vault.
-    #[error("Error not found")]
+    #[error("Entry not found")]
     EntryNotFound,
 
-    /// Operation attempted while the vault is locked
+    /// Operation attempted while the vault is locked.
     #[error("Vault is locked")]
     VaultLocked,
 }
 
+//
+// ----- Conversions from external crates -----
+//
+
 /// Convert Argon2 errors into generic cryptographic failure.
 ///
-/// Detailed error message intentionally discarded to:
-/// - Avoid leaking implementation details
-/// - Keep error behaviour uniform for callers
+/// Detailed error messages are intentionally discarded.
 impl From<argon2::Error> for VaultError {
     fn from(_: argon2::Error) -> Self {
         VaultError::CryptoError
     }
 }
 
-/// Convert AEAD errors into a generic cryptographic failure
+/// Convert AEAD errors into generic cryptographic failure.
 ///
-/// Authentication failures and malformed ciphertext are treated identically
+/// Authentication failures and malformed ciphertext are treated identically.
 impl From<chacha20poly1305::Error> for VaultError {
     fn from(_: chacha20poly1305::Error) -> Self {
         VaultError::CryptoError
+    }
+}
+
+/// Convert bincode serialization errors into generic serialization failure.
+///
+/// Internal format details are intentionally discarded.
+impl From<Box<bincode::ErrorKind>> for VaultError {
+    fn from(_: Box<bincode::ErrorKind>) -> Self {
+        VaultError::SerializationError
     }
 }
