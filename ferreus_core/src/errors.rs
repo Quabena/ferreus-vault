@@ -36,8 +36,8 @@ pub enum VaultError {
     /// The inner cause is intentionally discarded to:
     /// - Prevent oracle-style information leaks
     /// - Avoid exposing algorithm-specific behavior
-    #[error("Cryptographic error")]
-    CryptoError,
+    #[error("Cryptographic error: {0}")]
+    CryptoError(String),
 
     /// Failure during serialization or deserialization of vault data.
     ///
@@ -79,8 +79,8 @@ pub enum VaultError {
 ///
 /// Detailed error messages are intentionally discarded.
 impl From<argon2::Error> for VaultError {
-    fn from(_: argon2::Error) -> Self {
-        VaultError::CryptoError
+    fn from(e: argon2::Error) -> Self {
+        VaultError::CryptoError(e.to_string())
     }
 }
 
@@ -89,7 +89,7 @@ impl From<argon2::Error> for VaultError {
 /// Authentication failures and malformed ciphertext are treated identically.
 impl From<chacha20poly1305::Error> for VaultError {
     fn from(_: chacha20poly1305::Error) -> Self {
-        VaultError::CryptoError
+        VaultError::CryptoError("cryptographic failure".into())
     }
 }
 

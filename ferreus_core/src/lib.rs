@@ -27,9 +27,8 @@ pub mod memory;
 pub mod storage;
 pub mod vault;
 
-use std::cmp::Reverse;
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use crate::crypto::{estimate_password_strength, MasterKey};
@@ -46,6 +45,9 @@ pub struct VaultManager {
 
     auto_lock_timeout: Duration,
     last_activity: Instant,
+
+    failed_attempts: u32,
+    lockout_until: Option<Instant>,
 }
 
 impl VaultManager {
@@ -56,6 +58,8 @@ impl VaultManager {
             storage: VaultStorage::new(vault_path),
             auto_lock_timeout: Duration::from_secs(300),
             last_activity: Instant::now(),
+            failed_attempts: 0,
+            lockout_until: None,
         }
     }
 
@@ -63,7 +67,7 @@ impl VaultManager {
 
     pub fn create_vault(&self, master_password: &str) -> Result<(), VaultError> {
         if self.storage.vault_exists() {
-            return Err(VaultError::CorruptedVault);
+            return Err(VaultError::CryptoError("Vault already exists".into()));
         }
 
         let vault_data = VaultData::new();
@@ -72,11 +76,55 @@ impl VaultManager {
 
     /* ------------------ Unlocking -------------------------- */
 
-    pub fn unlock_vault(&mut self, master_password: &str) -> Result<(), VaultError> {
-        let (vault_data, master_key) = self.storage.load_vault(master_password)?;
+    pub fn unlock_vault(&mut self, password: &str) -> Result<(), VaultError> {
+        let now = Instant::now();
 
-        *self.lock_data()? = Some(vault_data);
-        *self.lock_key()? = Some(master_key);
+        // Hard lockout check
+        if let Some(until) = self.lockout_until {
+            if now < until {
+                return Err(VaultError::CryptoError(
+                    "Too many failed attempts. Try again later.".into(),
+                ));
+            }
+
+            self.lockout_until = None;
+        }
+
+        // Attempt unlock
+        if self.try_unlock(password).is_ok() {
+            self.failed_attempts = 0;
+            self.lockout_until = None;
+            return Ok(());
+        }
+
+        // Failure handling
+        self.failed_attempts += 1;
+
+        // Exponential backoff
+        let delay = 2u64
+            .saturating_pow(self.failed_attempts.saturating_sub(1))
+            .min(15);
+
+        std::thread::sleep(Duration::from_secs(delay));
+
+        // Hard lockout
+        if self.failed_attempts >= 5 {
+            self.lockout_until = Some(now + Duration::from_secs(30));
+        }
+
+        Err(VaultError::CryptoError("Invalid credentials".into()))
+    }
+
+    fn try_unlock(&mut self, password: &str) -> Result<(), VaultError> {
+        let (vault_data, master_key) = self.storage.load_vault(password)?;
+
+        {
+            let mut data_lock = self.lock_data()?;
+            let mut key_lock = self.lock_key()?;
+
+            *data_lock = Some(vault_data);
+            *key_lock = Some(master_key);
+        }
 
         self.touch();
         Ok(())
@@ -101,17 +149,30 @@ impl VaultManager {
     /* ------------------ Persistence -------------------------- */
 
     pub fn save_vault(&mut self) -> Result<(), VaultError> {
-        {
+        let encrypted_bytes = {
             let data_guard = self.lock_data()?;
             let key_guard = self.lock_key()?;
 
             match (&*data_guard, &*key_guard) {
                 (Some(data), Some(key)) => {
-                    self.storage.save_vault(data, key)?;
+                    // Serialize vault
+                    let serialized =
+                        bincode::serialize(data).map_err(|_| VaultError::SerializationError)?;
+
+                    // Encrypt vault
+                    let encrypted = crate::crypto::EncryptedVault::encrypt(&serialized, key)?;
+
+                    // Convert to file bytes
+                    encrypted
+                        .to_bytes()
+                        .map_err(|_| VaultError::SerializationError)?
                 }
                 _ => return Err(VaultError::VaultLocked),
             }
-        }
+        };
+
+        // Persist atomically
+        self.storage.save_vault(&encrypted_bytes)?;
 
         self.touch();
         Ok(())
@@ -149,13 +210,17 @@ impl VaultManager {
         self.auto_lock_timeout = timeout;
     }
 
+    pub fn auto_lock_timeout(&self) -> Option<Duration> {
+        Some(self.auto_lock_timeout)
+    }
+
     /* ------------------ Helpers -------------------------- */
 
-    fn lock_data(&self) -> Result<std::sync::MutexGuard<Option<VaultData>>, VaultError> {
+    fn lock_data(&self) -> Result<MutexGuard<'_, Option<VaultData>>, VaultError> {
         self.vault_data.lock().map_err(|_| VaultError::VaultLocked)
     }
 
-    fn lock_key(&self) -> Result<std::sync::MutexGuard<Option<MasterKey>>, VaultError> {
+    fn lock_key(&self) -> Result<MutexGuard<'_, Option<MasterKey>>, VaultError> {
         self.master_key.lock().map_err(|_| VaultError::VaultLocked)
     }
 

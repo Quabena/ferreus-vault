@@ -1,0 +1,24 @@
+[package]
+name = "ferreus_vault_app"
+version = "0.1.0"
+edition = "2021"
+description = "Tauri GUI shell for Ferreus Vault"
+license = "GPL-3.0-only"
+
+[build-dependencies]
+tauri-build = { version = "1.5", features = [] }
+
+[dependencies]
+tauri = { version = "1.5", features = ["api-all"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+zeroize = { workspace = true }
+sha2 = { version = "0.10", default-features = true }
+arboard = "3.3"
+
+
+# Local core dependency
+ferreus_core = { path = "../ferreus_core" }
+
+# Optional GUI-related utilities
+directories = { workspace = true }

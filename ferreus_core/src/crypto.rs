@@ -45,6 +45,7 @@ const ARGON2_P_COST: u32 = 1;
 const SALT_LENGTH: usize = 16;
 const NONCE_LENGTH: usize = 24;
 const KEY_LENGTH: usize = 32;
+const SALT_LEN: usize = 16;
 
 /* --------------- Master Key ---------------- */
 
@@ -65,6 +66,10 @@ impl MasterKey {
 
     /// Derives a master key from password using provided salt
     pub fn from_password_with_salt(password: &str, salt: &[u8]) -> Result<Self, VaultError> {
+        if password.is_empty() {
+            return Err(VaultError::CryptoError("Password cannot be empty".into()));
+        }
+
         let params = Params::new(
             ARGON2_M_COST,
             ARGON2_T_COST,
@@ -73,13 +78,15 @@ impl MasterKey {
         )?;
 
         let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
+
         let mut key = Zeroizing::new([0u8; KEY_LENGTH]);
 
         argon2.hash_password_into(password.as_bytes(), salt, key.as_mut())?;
 
         Ok(Self {
             key,
-            salt: salt.try_into().map_err(|_| VaultError::CryptoError)?,
+            salt: <[u8; SALT_LEN]>::try_from(salt)
+                .map_err(|_| VaultError::CryptoError("Invalid salt length".into()))?,
         })
     }
 
