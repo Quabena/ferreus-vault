@@ -15,86 +15,87 @@
 //!
 //! Design goals:
 //! - Explicit error taxonomy for auditability
-//! - No accidental leakage of sensitive material
+//! - No accidental leakage of sensitive material in error messages
 //! - Clear separation between user-facing errors and internal causes
-//! - Safe zeroization on drop where memory may contain secrets
+//! - Consistent conversion from third-party crate errors
 
 use std::io;
 use thiserror::Error;
 
 /// All recoverable errors that can occur while using the vault.
 ///
-/// This enum is intentionally small and explicit. If an error does not
-/// clearly belong here, it likely indicates a design issue upstream.
-///
-/// All variants are deliberately generic to avoid leaking sensitive
-/// implementation details (e.g., cryptographic failure reasons).
+/// Variants are kept minimal and deliberately generic where appropriate.
+/// Cryptographic failure reasons are not propagated to callers to prevent
+/// oracle-style information leaks.
 #[derive(Error, Debug)]
 pub enum VaultError {
-    /// Cryptographic failure (key derivation, encryption, authentication).
+    /// A cryptographic operation failed (key derivation, encryption,
+    /// authentication tag verification, etc.).
     ///
-    /// The inner cause is intentionally discarded to:
-    /// - Prevent oracle-style information leaks
-    /// - Avoid exposing algorithm-specific behavior
+    /// The message string is **internal** diagnostic context only. It must not
+    /// be forwarded verbatim to end users, as it may reveal algorithm-specific
+    /// behaviour that aids attacks.
     #[error("Cryptographic error: {0}")]
     CryptoError(String),
 
-    /// Failure during serialization or deserialization of vault data.
+    /// Serialisation or deserialisation of vault data failed.
     ///
-    /// Typically indicates:
+    /// Typical causes:
     /// - Corrupted vault file
     /// - Incompatible format version
-    /// - Unexpected structural mismatch
-    #[error("Serialization error")]
+    /// - Unexpected structural mismatch during bincode decode
+    #[error("Vault data could not be serialized or deserialized")]
     SerializationError,
 
-    /// The supplied master password failed authentication.
+    /// The master password failed authentication.
     ///
-    /// This error is deliberately non-specific to avoid password oracle leaks.
-    #[error("Invalid password")]
+    /// Deliberately non-specific to prevent timing and oracle attacks.
+    /// Callers must not attempt to distinguish wrong-password from
+    /// corrupted-vault at this level — both surface as authentication failure.
+    #[error("Invalid password or corrupted vault")]
     InvalidPassword,
 
-    /// Vault file is malformed, corrupted, or fails authentication.
-    #[error("Vault file corrupted or invalid format")]
+    /// The vault file is structurally malformed or its version is unsupported.
+    ///
+    /// Distinct from [`VaultError::InvalidPassword`]: this indicates the file
+    /// itself cannot be parsed, not that authentication failed.
+    #[error("Vault file is corrupted or uses an unsupported format version")]
     CorruptedVault,
 
-    /// Underlying I/O error (file access, permissions, disk issues).
+    /// An underlying file-system or I/O operation failed.
     #[error("I/O error: {0}")]
     IoError(#[from] io::Error),
 
-    /// Requested entry does not exist in the vault.
+    /// The requested entry index does not exist in the vault.
     #[error("Entry not found")]
     EntryNotFound,
 
-    /// Operation attempted while the vault is locked.
-    #[error("Vault is locked")]
+    /// An operation was attempted while the vault is locked.
+    #[error("Vault is locked — unlock before performing this operation")]
     VaultLocked,
 }
 
-//
-// ----- Conversions from external crates -----
-//
+/* ----- Conversions from external crates ---------------------------------- */
 
-/// Convert Argon2 errors into generic cryptographic failure.
+/// Argon2 errors are mapped to a generic cryptographic failure.
 ///
-/// Detailed error messages are intentionally discarded.
+/// Detailed Argon2 diagnostics are retained in the message string for
+/// internal logging but must not be forwarded to end users.
 impl From<argon2::Error> for VaultError {
     fn from(e: argon2::Error) -> Self {
-        VaultError::CryptoError(e.to_string())
+        VaultError::CryptoError(format!("key derivation failed: {e}"))
     }
 }
 
-/// Convert AEAD errors into generic cryptographic failure.
-///
-/// Authentication failures and malformed ciphertext are treated identically.
+/// AEAD errors (wrong key, corrupted ciphertext, truncated tag) are collapsed
+/// into a generic cryptographic failure. No detail is propagated.
 impl From<chacha20poly1305::Error> for VaultError {
     fn from(_: chacha20poly1305::Error) -> Self {
-        VaultError::CryptoError("cryptographic failure".into())
+        VaultError::CryptoError("authenticated decryption failed".into())
     }
 }
 
-/// Convert bincode serialization errors into generic serialization failure.
-///
+/// Bincode errors are collapsed into a generic serialisation failure.
 /// Internal format details are intentionally discarded.
 impl From<Box<bincode::ErrorKind>> for VaultError {
     fn from(_: Box<bincode::ErrorKind>) -> Self {

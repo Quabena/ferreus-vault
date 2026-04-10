@@ -11,53 +11,69 @@
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 
+/// Integration tests for FerreusVault
+///
+/// These tests exercise the full lifecycle of the vault through the public API.
+/// They are intentionally coarse-grained: each test covers a user-visible
+/// behaviour rather than an implementation detail.
+///
+/// Run with:
+/// ```
+/// cargo test --test integration
+/// ```
 #[cfg(test)]
 mod tests {
-    use ferreus_core::*;
+    // The library crate is named `ferreus_vault`, not `ferreus_core`.
+    use ferreus_vault::*;
     use serial_test::serial;
     use tempfile::NamedTempFile;
 
-    /* ----------------------------------------Vault LifeCycle -------------------------- */
+    /* ------------------- Vault lifecycle --------------------------------- */
 
     #[test]
     #[serial]
     fn vault_creation_unlock_and_lock_cycle() {
-        let temp = NamedTempFile::new().expect("temp file");
+        let temp = NamedTempFile::new().expect("failed to create temp file");
         let path = temp.path();
 
         let mut manager = VaultManager::new(path);
+        let strong_password = "StrongPassword123!@#";
 
-        let strong = "StrongPassword123!@#";
-
+        // Weak passwords must be rejected before the vault is created.
         assert!(validate_master_password("weak").is_err());
-        assert!(validate_master_password(strong).is_ok());
+        assert!(validate_master_password(strong_password).is_ok());
 
-        manager.create_vault(strong).expect("create vault");
+        manager.create_vault(strong_password).expect("vault creation failed");
+        assert!(!manager.is_unlocked(), "vault should be locked after creation");
 
-        assert!(!manager.is_unlocked());
+        // Wrong password must fail.
+        assert!(
+            manager.unlock_vault("WrongPassword").is_err(),
+            "wrong password should be rejected"
+        );
 
-        assert!(manager.unlock_vault("WrongPassword").is_err());
-
-        manager.unlock_vault(strong).expect("unlock");
+        // Correct password must succeed.
+        manager.unlock_vault(strong_password).expect("unlock failed");
         assert!(manager.is_unlocked());
 
         manager.lock_vault();
         assert!(!manager.is_unlocked());
     }
 
-    /* ----------------------------------------Entry Persistence -------------------------- */
+    /* ------------------- Entry persistence ------------------------------- */
+
     #[test]
     #[serial]
     fn entry_create_update_and_persist() {
         let temp = NamedTempFile::new().unwrap();
         let path = temp.path();
-
-        let mut manager = VaultManager::new(path);
         let password = "TestPassword123!@#";
 
+        let mut manager = VaultManager::new(path);
         manager.create_vault(password).unwrap();
         manager.unlock_vault(password).unwrap();
 
+        // Add an entry.
         manager
             .with_vault_data(|vault| {
                 vault.add_entry(vault::PasswordEntry::new(
@@ -69,6 +85,7 @@ mod tests {
             })
             .unwrap();
 
+        // Update the entry.
         manager
             .with_vault_data(|vault| {
                 vault
@@ -83,6 +100,7 @@ mod tests {
             })
             .unwrap();
 
+        // Persist, lock, and re-open.
         manager.save_vault().unwrap();
         manager.lock_vault();
         manager.unlock_vault(password).unwrap();
@@ -94,7 +112,7 @@ mod tests {
         assert_eq!(name, "Google Mail");
     }
 
-    /* ----------------------------------------Temper Detection -------------------------- */
+    /* ------------------- Tamper detection -------------------------------- */
 
     #[test]
     #[serial]
@@ -103,42 +121,54 @@ mod tests {
 
         let temp = NamedTempFile::new().unwrap();
         let path = temp.path();
-
-        let mut manager = VaultManager::new(path);
         let password = "TamperTestPassword123!";
 
+        let mut manager = VaultManager::new(path);
         manager.create_vault(password).unwrap();
         manager.unlock_vault(password).unwrap();
         manager.save_vault().unwrap();
+        manager.lock_vault();
 
-        // Corrupt vault file
+        // Flip a bit in the middle of the ciphertext.
         let mut bytes = fs::read(path).unwrap();
-        bytes[bytes.len() / 2] ^= 0xFF;
+        let mid = bytes.len() / 2;
+        bytes[mid] ^= 0xFF;
         fs::write(path, bytes).unwrap();
 
-        assert!(manager.unlock_vault(password).is_err());
+        assert!(
+            manager.unlock_vault(password).is_err(),
+            "tampered vault must be rejected"
+        );
     }
 
-    /* ----------------------------------------Password Strength Heuristic-------------------------- */
+    /* ------------------- Password strength heuristic --------------------- */
 
     #[test]
     fn password_strength_scoring() {
-        assert!(crypto::estimate_password_strength("password") < 30.0);
-        assert!(crypto::estimate_password_strength("Password123") > 50.0);
-        assert!(crypto::estimate_password_strength("Very$tr0ngP@ssw0rd!WithManyChars") > 80.0);
+        assert!(
+            crypto::estimate_password_strength("password") < 30.0,
+            "weak password should score below 30"
+        );
+        assert!(
+            crypto::estimate_password_strength("Password123") > 50.0,
+            "medium password should score above 50"
+        );
+        assert!(
+            crypto::estimate_password_strength("Very$tr0ngP@ssw0rd!WithManyChars") > 80.0,
+            "strong password should score above 80"
+        );
     }
 
-    /* ----------------------------------------Auto Lock-------------------------- */
+    /* ------------------- Auto-lock --------------------------------------- */
 
     #[test]
     #[serial]
     fn auto_lock_trigger_behaviour() {
         let temp = NamedTempFile::new().unwrap();
         let path = temp.path();
-
-        let mut manager = VaultManager::new(path);
         let password = "AutoLockPassword123!";
 
+        let mut manager = VaultManager::new(path);
         manager.create_vault(password).unwrap();
         manager.unlock_vault(password).unwrap();
 
@@ -146,13 +176,13 @@ mod tests {
 
         std::thread::sleep(std::time::Duration::from_millis(150));
 
-        assert!(manager.should_auto_lock());
+        assert!(manager.should_auto_lock(), "auto-lock should trigger after timeout");
 
         manager.lock_vault();
         assert!(!manager.is_unlocked());
     }
 
-    /* ----------------------------------------Secure Random Generation  -------------------------- */
+    /* ------------------- Secure random generation ------------------------ */
 
     #[test]
     fn secure_random_generation() {

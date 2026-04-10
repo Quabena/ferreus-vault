@@ -14,38 +14,75 @@
 //! Secure memory utilities for handling sensitive data
 //!
 //! Security goals:
-//! - Automatic zeroization of secrets
-//! - Use OS-backed cryptographically secure randomness
-//! - Avoid timing side-channel leaks
-//! - Provide explicit types for material
+//! - Automatic zeroization of secrets on drop via the `zeroize` crate
+//! - Cryptographically secure randomness from the OS CSPRNG
+//! - Constant-time comparison to prevent timing side-channel leaks
+//! - Optional OS-level memory locking (mlock/VirtualLock) behind a feature flag
 
+#[cfg(feature = "secure-memory")]
+use crate::memory_lock::LockedMemory;
 use rand::distributions::Alphanumeric;
 use rand::RngCore;
 use rand::{rngs::OsRng, Rng};
 use subtle::ConstantTimeEq;
 use zeroize::Zeroizing;
 
-/// Secure container for sensitive UTF-8 string data.
+/// Secure container for a sensitive UTF-8 string.
 ///
-/// Automatically zeroize memory when dropped.
+/// Memory is zeroized automatically when the value is dropped.
 pub type SecureString = Zeroizing<String>;
 
-/// Secure container for sensitive byte buffers
+/// Secure container for a sensitive byte buffer.
 ///
-/// Automatically zeroizes memory when dropped
+/// Memory is zeroized automatically when the value is dropped.
 pub type SecureBytes = Zeroizing<Vec<u8>>;
 
-/// Generates a cryptographic secure random alphanumeric string.
-///
-/// Use `OsRng` to ensure randomness originates from the operating system CSPRNG
-///
-/// # Security NOtes:
-/// - Intended for temporary secrets, tokens, or generated passwords
-/// - Avoid using this for key material (use raw bytes instead)
-pub fn generate_secure_random_string(length: usize) -> SecureString {
-    let mut rng = OsRng;
+/// A heap-allocated byte buffer that is zeroized on drop and, when the
+/// `secure-memory` feature is enabled, pinned against being swapped to disk.
+pub struct SecureBuffer {
+    data: Zeroizing<Vec<u8>>,
+    /// Holds the `mlock`/`VirtualLock` RAII guard, if acquired.
+    #[cfg(feature = "secure-memory")]
+    _lock: Option<LockedMemory>,
+}
 
-    let random_string: String = rng
+impl SecureBuffer {
+    /// Creates a `SecureBuffer` from a plaintext `Vec<u8>`.
+    ///
+    /// With the `secure-memory` feature enabled, the buffer is locked into
+    /// physical RAM before being wrapped in `Zeroizing`. The lock guard and
+    /// the data vector are stored together so the unlock happens before the
+    /// memory is released.
+    pub fn new(mut data: Vec<u8>) -> Self {
+        // Acquire the mlock BEFORE moving data into Zeroizing, so that
+        // the locked address matches the address of the live allocation.
+        #[cfg(feature = "secure-memory")]
+        let lock = LockedMemory::lock(&mut data).ok();
+
+        Self {
+            data: Zeroizing::new(data),
+            #[cfg(feature = "secure-memory")]
+            _lock: lock,
+        }
+    }
+
+    pub fn as_slice(&self) -> &[u8] {
+        &self.data
+    }
+}
+
+/// Generates a cryptographically secure random alphanumeric string of `length`
+/// characters.
+///
+/// Uses [`OsRng`] to ensure randomness originates from the operating system
+/// CSPRNG. The result is wrapped in a [`SecureString`] and zeroized on drop.
+///
+/// # Security notes
+/// - Intended for session tokens and generated passwords.
+/// - Do **not** use this for raw key material — use
+///   [`generate_secure_random_bytes`] instead.
+pub fn generate_secure_random_string(length: usize) -> SecureString {
+    let random_string: String = OsRng
         .sample_iter(&Alphanumeric)
         .take(length)
         .map(char::from)
@@ -54,25 +91,89 @@ pub fn generate_secure_random_string(length: usize) -> SecureString {
     SecureString::new(random_string)
 }
 
-/// Generates cryptographically secure random bytes
+/// Generates `length` cryptographically secure random bytes.
 ///
-/// Preferred for cryptographic key material
+/// Preferred for cryptographic key material. Uses [`OsRng`] directly.
 pub fn generate_secure_random_bytes(length: usize) -> SecureBytes {
-    let mut rng = OsRng;
     let mut buffer = vec![0u8; length];
-
-    rng.fill_bytes(&mut buffer);
-
+    OsRng.fill_bytes(&mut buffer);
     SecureBytes::new(buffer)
 }
 
-/// Constant time comparison of two byte slices
+/// Compares two byte slices in constant time.
 ///
-/// Prevents timing attacks by ensuring execution time does not depend on data
+/// Prevents timing attacks by ensuring execution time does not depend on the
+/// data values. Safe to use for comparing authentication tags, derived keys,
+/// and similar secrets.
 ///
-/// Security Notes:
-/// - Safe for comparing authentication tags, derived keys, etc.
-/// - Returns `false` if lengths differ
+/// Returns `false` if the slices have different lengths.
 pub fn constant_time_compare(a: &[u8], b: &[u8]) -> bool {
     a.ct_eq(b).into()
+}
+
+/* ------------------- OS Memory Locking ----------------------------------- */
+
+/// Locks the memory region at `ptr` of `len` bytes against swapping.
+///
+/// This is a best-effort operation. Failures are silently ignored because
+/// the application can still function without memory locking — the
+/// consequence of failure is a slightly reduced security posture, not
+/// incorrect behaviour.
+///
+/// Only available when the `secure-memory` Cargo feature is enabled.
+#[cfg(feature = "secure-memory")]
+pub fn lock_memory(ptr: *const u8, len: usize) {
+    #[cfg(unix)]
+    unsafe {
+        // Ignore the return value intentionally; mlock failure is non-fatal.
+        let _ = libc::mlock(ptr as *const libc::c_void, len);
+    }
+    #[cfg(windows)]
+    unsafe {
+        use windows_sys::Win32::System::Memory::VirtualLock;
+        let _ = VirtualLock(ptr as *mut _, len);
+    }
+}
+
+/// Unlocks a previously-locked memory region.
+///
+/// Only available when the `secure-memory` Cargo feature is enabled.
+#[cfg(feature = "secure-memory")]
+pub fn unlock_memory(ptr: *const u8, len: usize) {
+    #[cfg(unix)]
+    unsafe {
+        let _ = libc::munlock(ptr as *const libc::c_void, len);
+    }
+    #[cfg(windows)]
+    unsafe {
+        use windows_sys::Win32::System::Memory::VirtualUnlock;
+        let _ = VirtualUnlock(ptr as *mut _, len);
+    }
+}
+
+/* ------------------- Tests ----------------------------------------------- */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn random_string_length_and_charset() {
+        let s = generate_secure_random_string(32);
+        assert_eq!(s.len(), 32);
+        assert!(s.chars().all(|c| c.is_alphanumeric()));
+    }
+
+    #[test]
+    fn random_bytes_length() {
+        let b = generate_secure_random_bytes(64);
+        assert_eq!(b.len(), 64);
+    }
+
+    #[test]
+    fn constant_time_compare_equal_and_unequal() {
+        assert!(constant_time_compare(b"secret", b"secret"));
+        assert!(!constant_time_compare(b"secret", b"Secret"));
+        assert!(!constant_time_compare(b"short", b"longer"));
+    }
 }

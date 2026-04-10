@@ -10,18 +10,20 @@
 // Ferreus Vault is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-use core::time;
-use std::hash::Hasher;
+//use core::time;
+//use std::hash::Hasher;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
 use arboard::Clipboard;
 use sha2::{Digest, Sha256};
-use tauri::AppHandle;
+//use tauri::AppHandle;
 use zeroize::Zeroizing;
 
-use crate::{clipboard, state};
+use crate::clipboard;
+
+//use crate::{clipboard, state};
 
 /* ---------------------------- Clipboard State ----------------------------- */
 pub struct ClipboardState {
@@ -114,5 +116,12 @@ impl ClipboardState {
         });
 
         Ok(())
+    }
+
+    pub fn clear_clipboard_securely() {
+        if let Ok(mut clipboard) = arboard::Clipboard::new() {
+            let _ = clipboard.set_text("cleared");
+            let _ = clipboard.set_text("");
+        }
     }
 }

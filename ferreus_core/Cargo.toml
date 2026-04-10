@@ -23,6 +23,11 @@ rand = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 time = { workspace = true }
+uuid = { version = "1.7", features = ["v4", "serde"] }
+libc = { version = "0.2", optional = true }
+windows-sys = { version = "0.52", features = [
+    "Win32_System_Memory",
+], optional = true }
 # argon2 = { version = "0.5", features = ["std"] }
 # chacha20poly1305 = { version = "0.10", features = ["std"] }
 subtle = "2.6"
@@ -61,4 +66,4 @@ debug = true
 
 [features]
 default = []
-secure-memory = []
+secure-memory = ["libc", "windows-sys"]

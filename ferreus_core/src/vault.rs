@@ -13,13 +13,15 @@
 
 //! Core vault data structures
 //!
-//! This module defines the plaintext in-memory representation of vault data
-//! The entire structure is expected to be serialized and encrypted as a single unit
+//! Defines the plaintext in-memory representation of vault contents.
+//! The entire structure is serialized and encrypted as a single unit by
+//! [`crate::crypto::EncryptedVault`] — no individual field is ever written
+//! to disk in plaintext.
 //!
 //! Security goals:
-//! - Sensitive fields are zeroized on drop
+//! - Sensitive fields are zeroized on drop via `ZeroizeOnDrop`
 //! - Schema is versioned for forward compatibility
-//! - Minimal accidental data leakage
+//! - No accidental data leakage through derived trait impls (e.g. no `Display`)
 //! - Audit-friendly and explicit behaviour
 
 use chrono::{DateTime, Utc};
@@ -28,41 +30,47 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::errors::VaultError;
 
-/// Represent a single credential stored in the vault
+/// A single credential stored in the vault.
 ///
-/// NOTE:
-/// - `password`, `username`, and `notes` are treated as sensitive.
-/// - `account_name` is intentionally not zeroized because it is used for search and UI listing.
-/// - All entried are encrypted together as part of 'VaultData'
+/// # Zeroization
+/// `username`, `password`, and `notes` are treated as sensitive and are
+/// zeroized when the entry is dropped. `account_name` and the timestamp fields
+/// are intentionally **not** zeroized because they are used for search, UI
+/// listing, and audit purposes.
+///
+/// # Encryption
+/// Entries are never individually encrypted. The entire [`VaultData`] struct
+/// (which contains all entries) is serialized and encrypted as one unit.
 #[derive(Debug, Clone, Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
 pub struct PasswordEntry {
-    /// Human-readable account/service name (eg. 'gmail')
+    /// Human-readable account or service name (e.g. "Gmail").
+    ///
+    /// Not considered sensitive — used for search and display.
     #[zeroize(skip)]
     pub account_name: String,
 
-    /// Login username or email
+    /// Login username or email address.
     pub username: String,
 
-    /// Account password or secret
+    /// Account password or secret token.
     pub password: String,
 
-    /// Optional user notes
+    /// Optional free-text notes attached to this entry.
     pub notes: String,
 
-    /// Entry creation timestamp
+    /// Timestamp at which this entry was first created.
     #[zeroize(skip)]
     pub created_at: DateTime<Utc>,
 
-    /// Last modification timestamp
+    /// Timestamp of the most recent modification to any field.
     #[zeroize(skip)]
     pub updated_at: DateTime<Utc>,
 }
 
 impl PasswordEntry {
-    /// Create a new vault entry with current timestamp
+    /// Creates a new entry with the current UTC timestamp.
     pub fn new(account_name: String, username: String, password: String, notes: String) -> Self {
         let now = Utc::now();
-
         Self {
             account_name,
             username,
@@ -73,9 +81,10 @@ impl PasswordEntry {
         }
     }
 
-    /// Updates selected fields of an entry
+    /// Updates selected fields.
     ///
-    /// The timestamp is automatically refreshed if any field changes
+    /// `updated_at` is refreshed automatically if any field value changes.
+    /// Passing `None` for a field leaves it unchanged.
     pub fn update(
         &mut self,
         account_name: Option<String>,
@@ -85,23 +94,20 @@ impl PasswordEntry {
     ) {
         let mut modified = false;
 
-        if let Some(acc) = account_name {
-            self.account_name = acc;
+        if let Some(v) = account_name {
+            self.account_name = v;
             modified = true;
         }
-
-        if let Some(user) = username {
-            self.username = user;
+        if let Some(v) = username {
+            self.username = v;
             modified = true;
         }
-
-        if let Some(pass) = password {
-            self.password = pass;
+        if let Some(v) = password {
+            self.password = v;
             modified = true;
         }
-
-        if let Some(note) = notes {
-            self.notes = note;
+        if let Some(v) = notes {
+            self.notes = v;
             modified = true;
         }
 
@@ -111,34 +117,38 @@ impl PasswordEntry {
     }
 }
 
-/// Top-level plaintext vault container
+/* ------------------- VaultData ------------------------------------------ */
+
+/// The top-level plaintext vault container.
 ///
-/// This structure is serialized and encrypted as a unit
+/// Serialized with `bincode` and encrypted as a single opaque blob by
+/// [`crate::crypto::EncryptedVault`]. No individual field reaches disk in
+/// plaintext.
 #[derive(Debug, Serialize, Deserialize, Zeroize, ZeroizeOnDrop)]
 pub struct VaultData {
-    /// Schema version for forward compatibility
+    /// Schema version — checked on load to detect incompatible formats.
     pub version: u32,
 
-    /// Stored password entries
+    /// All stored password entries.
     pub entries: Vec<PasswordEntry>,
 
-    /// Vault creation timestamp
+    /// UTC timestamp when this vault was first created.
     #[zeroize(skip)]
     pub created_at: DateTime<Utc>,
 
-    /// Last vault modification timestamp
+    /// UTC timestamp of the most recent modification.
     #[zeroize(skip)]
     pub last_modified: DateTime<Utc>,
 }
 
 impl VaultData {
-    /// Current vault schema version
+    /// The current vault schema version. Bump this when the serialized format
+    /// changes in a backwards-incompatible way.
     pub const CURRENT_VERSION: u32 = 1;
 
-    /// Creates an empty vault
+    /// Creates an empty vault with the current schema version and timestamp.
     pub fn new() -> Self {
         let now = Utc::now();
-
         Self {
             version: Self::CURRENT_VERSION,
             entries: Vec::new(),
@@ -147,24 +157,27 @@ impl VaultData {
         }
     }
 
-    // Adds a new entry to the vault
+    /// Appends a new entry and updates the vault modification timestamp.
     pub fn add_entry(&mut self, entry: PasswordEntry) {
         self.entries.push(entry);
         self.touch();
     }
 
-    /// Removes an entry by index
+    /// Removes and returns the entry at `index`.
+    ///
+    /// Returns [`VaultError::EntryNotFound`] if the index is out of bounds.
     pub fn remove_entry(&mut self, index: usize) -> Result<PasswordEntry, VaultError> {
         if index >= self.entries.len() {
             return Err(VaultError::EntryNotFound);
         }
-
         let removed = self.entries.remove(index);
         self.touch();
         Ok(removed)
     }
 
-    /// Updates an entry by index
+    /// Updates selected fields on the entry at `index`.
+    ///
+    /// Returns [`VaultError::EntryNotFound`] if the index is out of bounds.
     pub fn update_entry(
         &mut self,
         index: usize,
@@ -180,33 +193,40 @@ impl VaultData {
 
         entry.update(account_name, username, password, notes);
         self.touch();
-
         Ok(())
     }
 
-    /// Retrieves an entry by index.
+    /// Returns the entry at `index`, or `None` if the index is out of bounds.
     pub fn get_entry(&self, index: usize) -> Option<&PasswordEntry> {
         self.entries.get(index)
     }
 
-    /// Case-insensitive search across selected fields
+    /// Case-insensitive search over `account_name`, `username`, and `notes`.
     ///
-    /// This operates on decrypted in-memory data only
+    /// # Security
+    /// This operates **exclusively on decrypted in-memory data**. It never
+    /// reads from disk and never constructs a query against the ciphertext.
+    /// The vault must be unlocked before calling this method.
     pub fn find_entries(&self, query: &str) -> Vec<&PasswordEntry> {
         let query_lower = query.to_lowercase();
-
         self.entries
             .iter()
-            .filter(|entry| {
-                entry.account_name.to_lowercase().contains(&query_lower)
-                    || entry.username.to_lowercase().contains(&query_lower)
-                    || entry.notes.to_lowercase().contains(&query_lower)
+            .filter(|e| {
+                e.account_name.to_lowercase().contains(&query_lower)
+                    || e.username.to_lowercase().contains(&query_lower)
+                    || e.notes.to_lowercase().contains(&query_lower)
             })
             .collect()
     }
 
-    /// Updates the vault-level modification timestamp
+    /// Updates the vault-level modification timestamp.
     fn touch(&mut self) {
         self.last_modified = Utc::now();
+    }
+}
+
+impl Default for VaultData {
+    fn default() -> Self {
+        Self::new()
     }
 }
