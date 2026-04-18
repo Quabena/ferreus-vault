@@ -91,17 +91,16 @@ impl VaultStorage {
     pub fn load_vault(&self, master_password: &str) -> Result<(VaultData, MasterKey), VaultError> {
         let vault_bytes = fs::read(&self.vault_path).map_err(VaultError::IoError)?;
 
-        let encrypted_vault = EncryptedVault::from_bytes(&vault_bytes)
-            .map_err(|_| VaultError::CorruptedVault)?;
+        let encrypted_vault =
+            EncryptedVault::from_bytes(&vault_bytes).map_err(|_| VaultError::CorruptedVault)?;
 
         if encrypted_vault.version != EncryptedVault::CURRENT_VERSION {
             return Err(VaultError::CorruptedVault);
         }
 
         // Re-derive the key using the salt stored in the vault file.
-        let master_key =
-            MasterKey::from_password_with_salt(master_password, &encrypted_vault.salt)
-                .map_err(|_| VaultError::InvalidPassword)?;
+        let master_key = MasterKey::from_password_with_salt(master_password, &encrypted_vault.salt)
+            .map_err(|_| VaultError::InvalidPassword)?;
 
         let decrypted_bytes = encrypted_vault
             .decrypt(&master_key)

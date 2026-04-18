@@ -11,52 +11,93 @@
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 
-use std::path::PathBuf;
+//! Tauri-managed application state
+//!
+//! [`AppState`] is registered with `app.manage()` during setup and made
+//! available to every command handler via Tauri's dependency injection.
+//!
+//! # Directory security
+//! On Unix, the vault directory is created with mode `0o700` in a single
+//! `DirBuilder` call, avoiding the TOCTOU race that would occur if we created
+//! the directory and then called `set_permissions` separately.
+//!
+//! # Error handling
+//! Initialisation errors are returned as `tauri::Error` strings rather than
+//! causing a panic, so Tauri can display a user-facing error dialog instead of
+//! crashing silently.
+
 use std::sync::Mutex;
 
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 
 use ferreus_core::VaultManager;
 
 const APP_NAME: &str = "FerreusVault";
-const VAULT_FILENAME: &str = "vault.dat";
+const VAULT_FILENAME: &str = "vault.sark";
 
 pub struct AppState {
+    /// Mutex-protected vault manager.
+    ///
+    /// All command handlers that need vault access lock this mutex for the
+    /// duration of their operation and release it before returning.
     pub vault: Mutex<VaultManager>,
-    pub vault_path: PathBuf,
 }
 
 impl AppState {
-    pub fn new(app: &AppHandle) -> Self {
-        // Resolve OS-Specific app data directory safely
-        let mut base_path = app
+    /// Resolves the vault directory, creates it if absent, and constructs the
+    /// initial (locked) vault manager.
+    ///
+    /// # Errors
+    /// Returns a `String` error if the OS cannot provide an app-data directory
+    /// or if directory creation fails. The error is surfaced as a Tauri setup
+    /// error rather than a panic.
+    pub fn new(app: &AppHandle) -> Result<Self, String> {
+        let base_path = app
             .path_resolver()
             .app_data_dir()
-            .expect("Failed to resolve app data directory");
+            .ok_or_else(|| "OS could not resolve the app data directory".to_string())?
+            .join(APP_NAME);
 
-        // App-specific folder
-        base_path.push(APP_NAME);
+        // Create the vault directory with the correct permissions in one step
+        // to avoid the TOCTOU race between `create_dir_all` and `set_permissions`.
+        create_vault_dir(&base_path)?;
 
-        // Create directory if missing
-        std::fs::create_dir_all(&base_path).expect("Failed to create vault directory");
-
-        // Enforce restrictive permissions on Unix systems
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let perms = std::fs::Permissions::from_mode(0o700);
-            std::fs::set_permissions(&base_path, perms)
-                .expect("Failed to set secure directory permissions");
-        }
-
-        // Vault file location
         let vault_path = base_path.join(VAULT_FILENAME);
-
         let vault_manager = VaultManager::new(&vault_path);
 
-        Self {
+        Ok(Self {
             vault: Mutex::new(vault_manager),
-            vault_path,
-        }
+        })
     }
+}
+
+/* ------------------- Directory creation ---------------------------------- */
+
+/// Creates `path` as a directory if it does not already exist.
+///
+/// On Unix, the directory is created with mode `0o700` atomically, avoiding
+/// the TOCTOU race that a separate `chmod` call would introduce.
+///
+/// On non-Unix platforms, the directory is created with the OS default
+/// permissions. If stronger isolation is required on Windows, use an ACL.
+fn create_vault_dir(path: &std::path::Path) -> Result<(), String> {
+    #[cfg(unix)]
+    {
+        use std::fs::DirBuilder;
+        use std::os::unix::fs::DirBuilderExt;
+
+        DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(path)
+            .map_err(|e| format!("Failed to create vault directory '{}': {e}", path.display()))?;
+    }
+
+    #[cfg(not(unix))]
+    {
+        std::fs::create_dir_all(path)
+            .map_err(|e| format!("Failed to create vault directory '{}': {e}", path.display()))?;
+    }
+
+    Ok(())
 }

@@ -25,9 +25,12 @@ serde_json = { workspace = true }
 time = { workspace = true }
 uuid = { version = "1.7", features = ["v4", "serde"] }
 libc = { version = "0.2", optional = true }
-windows-sys = { version = "0.52", features = [
+windows-sys = { version = "0.52", optional = true, features = [
     "Win32_System_Memory",
-], optional = true }
+] }
+hkdf = "0.12"
+sha2 = "0.10"
+
 # argon2 = { version = "0.5", features = ["std"] }
 # chacha20poly1305 = { version = "0.10", features = ["std"] }
 subtle = "2.6"
@@ -66,4 +69,4 @@ debug = true
 
 [features]
 default = []
-secure-memory = ["libc", "windows-sys"]
+secure-memory = ["windows-sys", "libc"]

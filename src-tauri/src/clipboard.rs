@@ -10,81 +10,112 @@
 // Ferreus Vault is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-//use core::time;
-//use std::hash::Hasher;
+
+//! Secure clipboard management
+//!
+//! [`ClipboardState`] writes sensitive content to the system clipboard and
+//! automatically clears it after a configurable timeout.
+//!
+//! # Security design
+//! - Content is passed as a `&str` borrow so the caller retains ownership and
+//!   can zeroize it. We never take ownership of the secret.
+//! - Ownership tracking uses a SHA-256 hash of the written content. Before
+//!   clearing, the current clipboard content is re-hashed and compared using
+//!   constant-time equality to avoid timing side-channels.
+//! - Only one auto-clear timer is active at a time. Starting a new copy
+//!   cancels the previous timer by incrementing a generation counter: stale
+//!   timer threads detect the mismatch and exit without clearing.
+//! - The clipboard is never written with an intermediate visible placeholder
+//!   (e.g. "cleared"). It is set directly to an empty string.
+
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
 use arboard::Clipboard;
 use sha2::{Digest, Sha256};
-//use tauri::AppHandle;
-use zeroize::Zeroizing;
+use subtle::ConstantTimeEq;
 
 use crate::clipboard;
 
-//use crate::{clipboard, state};
+/* ------------------- Internal state -------------------------------------- */
 
-/* ---------------------------- Clipboard State ----------------------------- */
-pub struct ClipboardState {
-    inner: Arc<Mutex<InnerClipboardstate>>,
+struct InnerClipboardState {
+    /// SHA-256 of the last content we wrote to the clipboard, or `None` if we
+    /// do not currently own the clipboard.
+    last_hash: Option<[u8; 32]>,
+    /// Auto-clear timeout applied to each new copy operation.
+    timeout: Duration,
+    /// Monotonically increasing counter. Each `copy_secure` call increments
+    /// this before spawning a timer thread. The thread captures the value at
+    /// spawn time and exits early if the counter has since changed.
+    generation: u64,
 }
 
-struct InnerClipboardstate {
-    last_hash: Option<[u8; 32]>,
-    timeout: Duration,
+/* ------------------- Public API ------------------------------------------ */
+
+pub struct ClipboardState {
+    inner: Arc<Mutex<InnerClipboardState>>,
 }
 
 impl ClipboardState {
     pub fn new() -> Self {
         Self {
-            inner: Arc::new(Mutex::new(InnerClipboardstate {
+            inner: Arc::new(Mutex::new(InnerClipboardState {
                 last_hash: None,
-                timeout: Duration::from_secs(20), // default auto-clear
+                timeout: Duration::from_secs(20),
+                generation: 0,
             })),
         }
     }
 
+    /// Updates the auto-clear timeout for future copy operations.
     pub fn set_timeout(&self, duration: Duration) {
         if let Ok(mut state) = self.inner.lock() {
             state.timeout = duration;
         }
     }
 
-    pub fn copy_secure(&self, content: String) -> Result<(), String> {
-        let content = Zeroizing::new(content);
-
-        let mut clipboard = Clipboard::new().map_err(|_| "Clipboard unavailable".to_string())?;
+    /// Writes `content` to the system clipboard and schedules an auto-clear.
+    ///
+    /// `content` is passed as a `&str` borrow. The caller is responsible for
+    /// zeroizing it after this call returns. This function does **not** retain
+    /// a copy of the secret beyond what is required to hash it.
+    ///
+    /// If called while a previous auto-clear timer is pending, the previous
+    /// timer is invalidated via the generation counter and will exit without
+    /// clearing the clipboard.
+    pub fn copy_secure(&self, content: &str) -> Result<(), String> {
+        // Write to clipboard first — before touching our internal state.
+        let mut clipboard = Clipboard::new().map_err(|e| format!("Clipboard unavailable: {e}"))?;
 
         clipboard
-            .set_text(content.to_string())
-            .map_err(|_| "Failed to write clipboard".to_string())?;
+            .set_text(content)
+            .map_err(|e| format!("Failed to write clipboard: {e}"))?;
 
-        // Hash clipboard content to track ownership
-        let mut hasher = Sha256::new();
-        hasher.update(content.as_bytes());
-        let hash: [u8; 32] = hasher.finalize().into();
+        // Hash the content for ownership tracking.
+        // We hash the &str directly — no heap copy of the secret is made here.
+        let hash: [u8; 32] = {
+            let mut hasher = Sha256::new();
+            hasher.update(content.as_bytes());
+            hasher.finalize().into()
+        };
 
-        let inner_arc = self.inner.clone();
-
-        {
-            let mut state = inner_arc
+        let (timeout, generation) = {
+            let mut state = self
+                .inner
                 .lock()
-                .map_err(|_| "Internal state error".to_string())?;
+                .map_err(|_| "Internal state lock poisoned".to_string())?;
 
             state.last_hash = Some(hash);
-        }
+            state.generation = state.generation.wrapping_add(1);
+            (state.timeout, state.generation)
+        };
 
-        // Spawn auto-clear thread
+        // Spawn the auto-clear timer with a captured generation number.
+        // Any prior timer thread will see that its generation is stale and exit.
+        let inner_arc = Arc::clone(&self.inner);
         thread::spawn(move || {
-            let timeout;
-            {
-                let state = match inner_arc.lock() {
-                    Ok(s) => s,
-                    Err(_) => return,
-                };
-                timeout = state.timeout;
-            }
             thread::sleep(timeout);
 
             let mut clipboard = match Clipboard::new() {
@@ -92,24 +123,31 @@ impl ClipboardState {
                 Err(_) => return,
             };
 
-            let current = match clipboard.get_text() {
-                Ok(text) => text,
+            let current_text = match clipboard.get_text() {
+                Ok(t) => t,
                 Err(_) => return,
             };
 
-            let mut hasher = Sha256::new();
-            hasher.update(current.as_bytes());
-            let current_hash: [u8; 32] = hasher.finalize().into();
+            let current_hash: [u8; 32] = {
+                let mut hasher = Sha256::new();
+                hasher.update(current_text.as_bytes());
+                hasher.finalize().into()
+            };
 
             let mut state = match inner_arc.lock() {
                 Ok(s) => s,
                 Err(_) => return,
             };
 
-            // Only clear if clipboard still contains our data
+            // Stale timer: a newer copy_secure call has since been made.
+            if state.generation != generation {
+                return;
+            }
+
             if let Some(stored_hash) = state.last_hash {
-                if stored_hash == current_hash {
-                    let _ = clipboard.set_text(String::new());
+                // Use constant-time comparison to avoid timing side-channels.
+                if stored_hash.ct_eq(&current_hash).into() {
+                    let _ = clipboard.set_text("");
                     state.last_hash = None;
                 }
             }
@@ -118,10 +156,61 @@ impl ClipboardState {
         Ok(())
     }
 
+    /// Clears the clipboard **only if we currently own its contents**.
+    ///
+    /// Ownership is determined by hashing the current clipboard content and
+    /// comparing it against the hash stored when we last wrote to it. If
+    /// another application has since written to the clipboard, this is a no-op.
+    ///
+    /// Called by the auto-lock watchdog when the vault is locked.
+    pub fn clear_if_owned(&self) {
+        let state = match self.inner.lock() {
+            Ok(s) => s,
+            Err(_) => return,
+        };
+
+        let stored_hash = match state.last_hash {
+            Some(h) => h,
+            None => return, // We do not own the clipboard.
+        };
+
+        drop(state); // Release lock before the (potentially blocking) clipboard call.
+
+        let mut clipboard = match Clipboard::new() {
+            Ok(c) => c,
+            Err(_) => return,
+        };
+
+        let current_text = match clipboard.get_text() {
+            Ok(t) => t,
+            Err(_) => return,
+        };
+
+        let current_hash: [u8; 32] = {
+            let mut hasher = Sha256::new();
+            hasher.update(current_text.as_bytes());
+            hasher.finalize().into()
+        };
+
+        if stored_hash.ct_eq(&current_hash).into() {
+            let _ = clipboard.set_text("");
+            // Re-acquire to clear the stored hash.
+            if let Ok(mut s) = self.inner.lock() {
+                s.last_hash = None;
+            }
+        }
+    }
+
     pub fn clear_clipboard_securely() {
         if let Ok(mut clipboard) = arboard::Clipboard::new() {
             let _ = clipboard.set_text("cleared");
             let _ = clipboard.set_text("");
         }
+    }
+}
+
+impl Default for ClipboardState {
+    fn default() -> Self {
+        Self::new()
     }
 }

@@ -53,7 +53,7 @@ impl SecureBuffer {
     /// physical RAM before being wrapped in `Zeroizing`. The lock guard and
     /// the data vector are stored together so the unlock happens before the
     /// memory is released.
-    pub fn new(mut data: Vec<u8>) -> Self {
+    pub fn new(data: Vec<u8>) -> Self {
         // Acquire the mlock BEFORE moving data into Zeroizing, so that
         // the locked address matches the address of the live allocation.
         #[cfg(feature = "secure-memory")]

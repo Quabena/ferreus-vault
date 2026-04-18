@@ -11,51 +11,67 @@
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 
-use std::fmt::format;
+//! Security policy command handlers
+//!
+//! Manages runtime security policies: auto-lock timeout and clipboard
+//! clear timeout. Both are validated against hard bounds before being
+//! applied to ensure the user cannot configure insecure values.
+
 use std::time::Duration;
 
 use tauri::{AppHandle, Manager, State};
 
-use crate::clipboard::{self, ClipboardState};
-use crate::state::{self, AppState};
+use crate::clipboard::ClipboardState;
+use crate::state::AppState;
 
-/* ---------------------------- Auto-Lock Policy Bounds ---------------------- */
+/* ------------------- Policy bounds --------------------------------------- */
+
+/// Minimum permitted auto-lock timeout in seconds (10 s).
 const MIN_TIMEOUT_SECS: u64 = 10;
-const MAX_TIMEOUT_SECS: u64 = 900; // 15 MINUTES
-const DEFAULT_TIMEOUT_SECS: u64 = 300;
+/// Maximum permitted auto-lock timeout in seconds (15 minutes).
+const MAX_TIMEOUT_SECS: u64 = 900;
+/// Maximum permitted clipboard clear timeout in seconds.
+/// Capped independently of the vault timeout so sensitive content
+/// on the clipboard is cleared sooner than the vault locks.
+const MAX_CLIPBOARD_TIMEOUT_SECS: u64 = 60;
 
-/* ------------------------------ Set Auto-Lock Timeout ----------------------- */
+/* ------------------- Set auto-lock timeout ------------------------------- */
+
+/// Updates the vault inactivity timeout and the clipboard clear timeout.
+///
+/// `seconds` must be between [`MIN_TIMEOUT_SECS`] and [`MAX_TIMEOUT_SECS`]
+/// (inclusive). The clipboard timeout is capped independently at
+/// [`MAX_CLIPBOARD_TIMEOUT_SECS`] so that clipboard content is cleared
+/// no later than 60 seconds regardless of the vault timeout.
 #[tauri::command]
 pub fn set_auto_lock_timeout(
     seconds: u64,
     state: State<AppState>,
     app: AppHandle,
 ) -> Result<(), String> {
-    // Enforce bounds
-    if seconds < MIN_TIMEOUT_SECS || seconds > MAX_TIMEOUT_SECS {
+    if !(MIN_TIMEOUT_SECS..=MAX_TIMEOUT_SECS).contains(&seconds) {
         return Err(format!(
             "Timeout must be between {} and {} seconds",
             MIN_TIMEOUT_SECS, MAX_TIMEOUT_SECS
         ));
     }
 
-    let mut vault = state
-        .vault
-        .lock()
-        .map_err(|_| "Internal state error".to_string())?;
+    {
+        let mut vault = state
+            .vault
+            .lock()
+            .map_err(|_| "Internal state error".to_string())?;
 
-    drop(vault); // release lock ASAP
+        vault.set_auto_lock_timeout(Duration::from_secs(seconds));
+    } // lock dropped here
 
-    // Also update clipboard timeout
     if let Some(clipboard) = app.try_state::<ClipboardState>() {
-        clipboard.set_timeout(Duration::from_secs(seconds.min(60)));
-        // Clipboard timeout capped to 60 seconds max regardless of vault timeout
+        clipboard.set_timeout(Duration::from_secs(seconds.min(MAX_CLIPBOARD_TIMEOUT_SECS)));
     }
 
     Ok(())
 }
 
-/* ------------------------------ Get Auto-Lock Timeout ---------------------- */
 #[tauri::command]
 pub fn get_auto_lock_timeout(state: State<AppState>) -> Result<u64, String> {
     let vault = state
@@ -63,8 +79,5 @@ pub fn get_auto_lock_timeout(state: State<AppState>) -> Result<u64, String> {
         .lock()
         .map_err(|_| "Internal state error".to_string())?;
 
-    Ok(vault
-        .auto_lock_timeout()
-        .unwrap_or(Duration::from_secs(DEFAULT_TIMEOUT_SECS))
-        .as_secs())
+    Ok(vault.auto_lock_timeout().as_secs())
 }
