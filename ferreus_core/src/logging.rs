@@ -11,7 +11,7 @@
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 
-//! Security event logging for FerreusVault
+//! Security event logging for FerreusVault.
 //!
 //! All security-relevant events (vault unlock, lock, failed attempts, lockout)
 //! are routed through this module so that a future integration with a syslog
@@ -30,13 +30,24 @@
 //! ```
 //! The prefix and timestamp are added by this module; callers supply only the
 //! message string.
+//!
+//! # Future work
+//! - Integrate a structured logging backend (e.g., `tracing` with JSON output)
+//!   for machine-parseable SIEM ingestion.
+//! - Add event severity levels (INFO / WARN / CRIT) to allow fine-grained
+//!   alerting rules.
+//! - Consider a rate limiter to prevent log flooding under an active attack.
 
 use chrono::Utc;
 
-/// Emits a structured security audit event.
+/// Emits a structured security audit event at the `warn` log level.
 ///
-/// Events are logged at the `warn` level via the `log` crate. Callers should
-/// pass a concise, machine-readable message without embedded newlines.
+/// Events are intended for security-relevant transitions: vault unlock/lock,
+/// failed authentication attempts, lockout imposition, and session lifecycle.
+///
+/// Callers should pass a concise, machine-readable message without embedded
+/// newlines. Sensitive values (passwords, key bytes) must **never** appear in
+/// the message string.
 ///
 /// # Example
 /// ```ignore
@@ -51,8 +62,13 @@ pub fn log_security_event(event: &str) {
 
 /// Emits a debug-level diagnostic event.
 ///
-/// Use for non-security operational events (e.g. vault saved, entry added).
-/// These are suppressed at most log levels in production.
+/// Use for non-security operational events (e.g., vault saved, entry added).
+/// These are suppressed at most log levels in production; enable the `debug`
+/// log level only when diagnosing issues in a controlled environment.
+///
+/// # Security note
+/// Even at the debug level, callers must not include sensitive data (passwords,
+/// key material, or plaintext entry content) in the event string.
 pub fn log_debug_event(event: &str) {
     let timestamp = Utc::now().to_rfc3339();
     log::debug!("[FERREUS_DEBUG] {} | {}", timestamp, event);

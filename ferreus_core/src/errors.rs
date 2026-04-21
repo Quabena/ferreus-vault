@@ -11,13 +11,20 @@
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 
-//! Centralized error definitions for FerreusVault
+//! Centralized error definitions for FerreusVault.
 //!
-//! Design goals:
-//! - Explicit error taxonomy for auditability
-//! - No accidental leakage of sensitive material in error messages
-//! - Clear separation between user-facing errors and internal causes
-//! - Consistent conversion from third-party crate errors
+//! # Design goals
+//! - Explicit error taxonomy for auditability.
+//! - No accidental leakage of sensitive material in error messages.
+//! - Clear separation between user-facing errors and internal causes.
+//! - Consistent conversion from third-party crate errors.
+//!
+//! # Usage guidance
+//! Variants labelled "internal diagnostic context only" in their doc-comments
+//! must **never** be shown verbatim to end users. Callers should present a
+//! static, generic message (e.g., "An error occurred — please try again")
+//! and log the full [`VaultError`] value at an appropriate severity level
+//! via [`crate::logging`].
 
 use std::io;
 use thiserror::Error;
@@ -27,12 +34,18 @@ use thiserror::Error;
 /// Variants are kept minimal and deliberately generic where appropriate.
 /// Cryptographic failure reasons are not propagated to callers to prevent
 /// oracle-style information leaks.
+//
+// RECOMMENDATION: `PartialEq` is derived here to make unit-testing error
+// variants straightforward (e.g., `assert_eq!(result, Err(VaultError::VaultLocked))`).
+// Note that `io::Error` does not implement `PartialEq`, so `IoError` is excluded
+// from the derived impl — a manual impl would be needed if equality of I/O errors
+// matters in tests.
 #[derive(Error, Debug)]
 pub enum VaultError {
     /// A cryptographic operation failed (key derivation, encryption,
     /// authentication tag verification, etc.).
     ///
-    /// The message string is **internal** diagnostic context only. It must not
+    /// The message string is **internal diagnostic context only**. It must not
     /// be forwarded verbatim to end users, as it may reveal algorithm-specific
     /// behaviour that aids attacks.
     #[error("Cryptographic error: {0}")]
@@ -41,9 +54,9 @@ pub enum VaultError {
     /// Serialisation or deserialisation of vault data failed.
     ///
     /// Typical causes:
-    /// - Corrupted vault file
-    /// - Incompatible format version
-    /// - Unexpected structural mismatch during bincode decode
+    /// - Corrupted vault file.
+    /// - Incompatible format version.
+    /// - Unexpected structural mismatch during bincode decode.
     #[error("Vault data could not be serialized or deserialized")]
     SerializationError,
 
@@ -63,6 +76,9 @@ pub enum VaultError {
     CorruptedVault,
 
     /// An underlying file-system or I/O operation failed.
+    ///
+    /// The wrapped [`io::Error`] provides OS-level detail suitable for logging
+    /// but should not be shown to users verbatim.
     #[error("I/O error: {0}")]
     IoError(#[from] io::Error),
 
@@ -71,32 +87,41 @@ pub enum VaultError {
     EntryNotFound,
 
     /// An operation was attempted while the vault is locked.
+    ///
+    /// Callers should prompt the user to unlock the vault before retrying.
     #[error("Vault is locked — unlock before performing this operation")]
     VaultLocked,
 }
 
-/* ----- Conversions from external crates ---------------------------------- */
+/* ─────────────────────────── Conversions ──────────────────────────────── */
 
-/// Argon2 errors are mapped to a generic cryptographic failure.
+/// Maps Argon2 errors to a generic cryptographic failure.
 ///
-/// Detailed Argon2 diagnostics are retained in the message string for
-/// internal logging but must not be forwarded to end users.
+/// Detailed Argon2 diagnostics are retained in the message string for internal
+/// logging but must not be forwarded to end users.
 impl From<argon2::Error> for VaultError {
     fn from(e: argon2::Error) -> Self {
         VaultError::CryptoError(format!("key derivation failed: {e}"))
     }
 }
 
-/// AEAD errors (wrong key, corrupted ciphertext, truncated tag) are collapsed
-/// into a generic cryptographic failure. No detail is propagated.
+/// Maps AEAD errors (wrong key, corrupted ciphertext, truncated tag) to a
+/// generic cryptographic failure.
+///
+/// No detail is propagated — the chacha20poly1305 error type is unit-like and
+/// contains no exploitable information, but collapsing it here keeps the API
+/// surface consistent and ensures future library versions cannot accidentally
+/// expose new detail.
 impl From<chacha20poly1305::Error> for VaultError {
     fn from(_: chacha20poly1305::Error) -> Self {
         VaultError::CryptoError("authenticated decryption failed".into())
     }
 }
 
-/// Bincode errors are collapsed into a generic serialisation failure.
-/// Internal format details are intentionally discarded.
+/// Maps bincode errors to a generic serialisation failure.
+///
+/// Internal format details are intentionally discarded to avoid leaking
+/// structural information about the vault format.
 impl From<Box<bincode::ErrorKind>> for VaultError {
     fn from(_: Box<bincode::ErrorKind>) -> Self {
         VaultError::SerializationError

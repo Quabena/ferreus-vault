@@ -38,9 +38,6 @@ use chacha20poly1305::{
     aead::{Aead, KeyInit, Payload},
     Key, XChaCha20Poly1305, XNonce,
 };
-use hkdf::Hkdf;
-use sha2::Sha256;
-
 use rand::rngs::OsRng;
 use rand_core::RngCore;
 use serde::{Deserialize, Serialize};
@@ -99,17 +96,6 @@ pub struct MasterKey {
     /// Stored here so callers can persist it in the [`EncryptedVault`] header
     /// without needing a separate out-parameter.
     salt: [u8; SALT_LENGTH],
-
-    /// Vault Key
-    vault_key: Zeroizing<[u8; KEY_LENGTH]>,
-
-    let initial_vault_key = combine_keys(&password_key, device_key);
-
-    Ok(Self {
-        key: Zeroizing::new(combined),
-        salt: salt.try_into().map_err(|_| VaultError::CryptoError("Invalid salt".into()))?;
-        vault_key: Zeroizing::new(initial_vault_key),
-    })
 }
 
 impl MasterKey {
@@ -129,16 +115,18 @@ impl MasterKey {
     /// Returns [`VaultError::CryptoError`] if Argon2 parameter construction or
     /// hashing fails.  The error message is intentionally generic to avoid
     /// leaking implementation details.
-
     pub fn from_password_with_salt(
         password: &str,
         salt: &[u8; SALT_LENGTH],
-        device_key: &[u8],
     ) -> Result<Self, VaultError> {
         if password.is_empty() {
             return Err(VaultError::CryptoError("Password cannot be empty".into()));
         }
 
+        // Build Argon2 parameters from the module-level constants.  Using named
+        // constants (rather than inline literals) ensures that encryption and
+        // decryption always agree on the work factor — any accidental divergence
+        // would be caught at compile time, not at runtime.
         let params = Params::new(
             ARGON2_M_COST,
             ARGON2_T_COST,
@@ -149,19 +137,15 @@ impl MasterKey {
 
         let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
 
-        // Zeroized so key material is scrubbed even if combine_keys panics.
-        let mut password_key = Zeroizing::new([0u8; KEY_LENGTH]);
+        // Allocate the output buffer inside a Zeroizing guard so that the derived
+        // key is scrubbed if this function returns an error after hashing.
+        let mut key = Zeroizing::new([0u8; KEY_LENGTH]);
 
         argon2
-            .hash_password_into(password.as_bytes(), salt.as_ref(), password_key.as_mut())
+            .hash_password_into(password.as_bytes(), salt.as_ref(), key.as_mut())
             .map_err(|e| VaultError::CryptoError(e.to_string()))?;
 
-        let combined = combine_keys(&password_key, device_key);
-
-        Ok(Self {
-            key: combined,
-            salt: *salt,
-        })
+        Ok(Self { key, salt: *salt })
     }
 
     /// Generates a fresh cryptographically random salt and derives a key from it.
@@ -226,16 +210,6 @@ impl MasterKey {
             salt,
         }
     }
-
-    pub fn rotate_vault_key(&mut self) {
-        let next = ratchet_key(self.vault_key.as_ref());
-        self.vault_key.zeroize();
-        self.vault_key.copy_from_slice(&next);
-    }
-
-    pub fn vault_key_bytes(&self) -> &[u8] {
-        &self.vault_key
-    }
 }
 
 /* ─────────────────────────── Encrypted Vault Container ────────────────── */
@@ -269,9 +243,6 @@ pub struct EncryptedVault {
 
     /// XChaCha20-Poly1305 nonce; 24 random bytes generated per encryption.
     pub nonce: [u8; NONCE_LENGTH],
-
-    /// Generation:
-    pub generation: u64,
 
     /// AEAD ciphertext including the 16-byte Poly1305 authentication tag.
     pub ciphertext: Vec<u8>,
@@ -623,29 +594,6 @@ fn build_aad(version: u32, salt: &[u8; SALT_LENGTH], nonce: &[u8; NONCE_LENGTH])
     aad.extend_from_slice(salt);
     aad.extend_from_slice(nonce);
     aad
-}
-
-/* ----------------- hkdf key combiner -------------------- */
-fn combine_keys(password_key: &[u8], device_key: &[u8]) -> Zeroizing<[u8; KEY_LENGTH]> {
-    let hk = Hkdf::<Sha256>::new(Some(device_key), password_key);
-
-    let mut out = Zeroizing::new([0u8; KEY_LENGTH]);
-    hk.expand(b"ferreus-vault-master-key", out.as_mut())
-        .expect("HKDF expand failed — output length is a compile-time constant");
-
-    out
-}
-
-/* ----------------------- Key Ratchet Function ------------------------- */
-pub fn ratchet_key(current_key: &[u8]) -> Zeroizing<[u8; 32]> {
-    let hk = Hkdf::<Sha256>::new(None, current_key);
-
-    let mut next = [0u8];
-
-    hk.expand(b"ferreus-vault-ratchet", &mut next)
-        .expect("HKDF expand failed");
-
-    next
 }
 
 /* ─────────────────────────── Tests ────────────────────────────────────── */

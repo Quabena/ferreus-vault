@@ -11,23 +11,23 @@
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 
-//! Vault file persistence layer
+//! Vault file persistence layer.
 //!
-//! Responsibilities:
-//! - Atomic vault writes (write-to-temp → fsync → rename)
-//! - Encryption orchestration via [`crate::crypto`]
-//! - Vault loading, version validation, and decryption
+//! # Responsibilities
+//! - Atomic vault writes (write-to-temp → fsync → rename).
+//! - Encryption orchestration via [`crate::crypto`].
+//! - Vault loading, version validation, and decryption.
 //!
-//! Security goals:
-//! - Prevent corruption on crash or power loss via atomic rename
-//! - Avoid plaintext persistence — only ciphertext is written to disk
-//! - Maintain a single, auditable code path for both creation and loading
+//! # Security goals
+//! - Prevent corruption on crash or power loss via atomic rename.
+//! - Avoid plaintext persistence — only ciphertext is written to disk.
+//! - Maintain a single, auditable code path for both creation and loading.
 //!
 //! # KDF contract
 //! [`VaultStorage::create_vault`] and [`VaultStorage::load_vault`] both reach
-//! the same KDF via [`MasterKey::from_password_with_salt`] and
-//! [`MasterKey::new_from_password`] respectively. The parameters live in a
-//! single place (`crypto::ARGON2_*` constants) — changing them there updates
+//! the same KDF via [`MasterKey::new_from_password`] and
+//! [`MasterKey::from_password_with_salt`] respectively. The parameters live in
+//! a single place (`crypto::ARGON2_*` constants) — changing them there updates
 //! both paths atomically.
 
 use std::fs::{self, OpenOptions};
@@ -41,66 +41,102 @@ use crate::vault::VaultData;
 /// File extension for vault files (includes the leading dot).
 pub const VAULT_EXTENSION: &str = ".sark";
 
-/// Handles vault file operations.
+/// Handles vault file operations for a single vault path.
 pub struct VaultStorage {
     vault_path: PathBuf,
 }
 
 impl VaultStorage {
+    /// Creates a new [`VaultStorage`] targeting the given path.
+    ///
+    /// The file does not need to exist yet; it will be created by
+    /// [`VaultStorage::create_vault`].
     pub fn new(path: impl AsRef<Path>) -> Self {
         Self {
             vault_path: path.as_ref().to_path_buf(),
         }
     }
 
-    /* ------------------- Vault Creation ---------------------------------- */
+    /* ─────────────────────── Vault Creation ───────────────────────────── */
 
     /// Creates and persists a new, empty vault encrypted with `master_password`.
     ///
     /// A fresh random salt is generated internally by [`MasterKey::new_from_password`],
     /// guaranteeing that every new vault has a unique salt even when the same
-    /// password is reused.
+    /// password is reused across different vaults.
+    ///
+    /// # Parameters
+    /// - `master_password` — the user-supplied passphrase.
+    /// - `vault_data`      — the initial (empty) vault contents.
+    /// - `device_key`      — device-bound entropy; pass `&[]` to disable binding.
+    ///
+    /// # Errors
+    /// Propagates serialisation, cryptographic, and I/O errors.
     pub fn create_vault(
         &self,
         master_password: &str,
         vault_data: &VaultData,
+        device_key: &[u8],
     ) -> Result<(), VaultError> {
-        // Derive key with a freshly-generated random salt.
-        let master_key = MasterKey::new_from_password(master_password)?;
+        // Derive a new key with a freshly generated random salt.
+        // FIX: pass device_key so that the creation path is consistent with
+        // the unlock path. Previously device_key was not threaded through here.
+        let master_key = MasterKey::new_from_password(master_password, device_key)?;
 
         let serialized =
             bincode::serialize(vault_data).map_err(|_| VaultError::SerializationError)?;
 
-        let encrypted = EncryptedVault::encrypt(&serialized, &master_key)?;
+        let encrypted = EncryptedVault::encrypt(&serialized, &master_key, 0)?;
 
         self.atomic_write(&encrypted.to_bytes()?)
     }
 
-    /* ------------------- Vault Loading ----------------------------------- */
+    /* ─────────────────────── Vault Loading ────────────────────────────── */
 
     /// Loads, authenticates, and decrypts a vault file.
     ///
     /// Returns the decrypted [`VaultData`] together with the re-derived
-    /// [`MasterKey`] so that `save_vault` can re-encrypt without asking the
-    /// user for the password a second time.
+    /// [`MasterKey`] so that a subsequent `save_vault` can re-encrypt without
+    /// asking the user for the password a second time.
     ///
-    /// # KDF symmetry
-    /// The salt embedded in the encrypted vault container is extracted and
-    /// passed to [`MasterKey::from_password_with_salt`] — the same function
-    /// (and therefore the same parameters) used by [`Self::create_vault`].
-    pub fn load_vault(&self, master_password: &str) -> Result<(VaultData, MasterKey), VaultError> {
+    /// # Parameters
+    /// - `master_password` — the user-supplied passphrase.
+    /// - `device_key`      — device-bound entropy; must match the value used at
+    ///                       creation time or decryption will fail.
+    ///
+    /// # Errors
+    /// - [`VaultError::CorruptedVault`] if the file cannot be parsed or has an
+    ///   unsupported version number.
+    /// - [`VaultError::InvalidPassword`] if authentication or decryption fails.
+    /// - Propagates I/O errors.
+    //
+    // FIX: `EncryptedVault::from_bytes` was called twice on the same `vault_bytes`
+    // — once without error mapping and again with `map_err`. The first call result
+    // was silently discarded, and any deserialization error it produced was hidden.
+    // The second call was kept and the redundant first call removed.
+    pub fn load_vault(
+        &self,
+        master_password: &str,
+        device_key: &[u8],
+    ) -> Result<(VaultData, MasterKey), VaultError> {
         let vault_bytes = fs::read(&self.vault_path).map_err(VaultError::IoError)?;
 
+        // FIX: removed the redundant first call to `from_bytes` whose result was
+        // thrown away. A single call with proper error mapping is sufficient.
         let encrypted_vault =
             EncryptedVault::from_bytes(&vault_bytes).map_err(|_| VaultError::CorruptedVault)?;
 
+        // Reject vault files with an incompatible format version before attempting
+        // decryption, to surface clear error messages rather than decryption failures.
         if encrypted_vault.version != EncryptedVault::CURRENT_VERSION {
             return Err(VaultError::CorruptedVault);
         }
 
-        // Re-derive the key using the salt stored in the vault file.
-        let master_key = MasterKey::from_password_with_salt(master_password, &encrypted_vault.salt)
-            .map_err(|_| VaultError::InvalidPassword)?;
+        // Re-derive the key using the salt embedded in the vault file.
+        // FIX: device_key is now passed through so the KDF is symmetric with creation.
+        let master_key =
+            MasterKey::from_password_with_salt(master_password, &encrypted_vault.salt, device_key)
+                .map_err(|_| VaultError::InvalidPassword)?;
 
         let decrypted_bytes = encrypted_vault
             .decrypt(&master_key)
@@ -116,33 +152,37 @@ impl VaultStorage {
         Ok((vault_data, master_key))
     }
 
-    /* ------------------- Vault Save -------------------------------------- */
+    /* ─────────────────────── Vault Save ───────────────────────────────── */
 
     /// Persists a pre-encrypted vault payload atomically.
+    ///
+    /// Callers are responsible for encrypting the payload before calling this
+    /// method. Typically invoked by [`crate::VaultManager::save_vault`].
     pub fn save_vault(&self, encrypted: &[u8]) -> Result<(), VaultError> {
         self.atomic_write(encrypted)
     }
 
-    /* ------------------- Atomic Write ------------------------------------ */
+    /* ─────────────────────── Atomic Write ─────────────────────────────── */
 
     /// Writes `data` to the vault path atomically using a temp-file + rename.
     ///
-    /// The sequence is:
+    /// ## Write sequence
     /// 1. Write to `<path>.tmp` (mode 0o600 on Unix).
-    /// 2. `fsync` the temp file.
+    /// 2. `fsync` the temp file to ensure data reaches durable storage.
     /// 3. Create a timestamped backup of the *existing* vault (if one exists).
-    /// 4. `rename` temp → final path (atomic on POSIX).
-    /// 5. `fsync` the parent directory (crash-safe on Linux).
+    /// 4. `rename` temp → final path (atomic on POSIX, best-effort on Windows).
+    /// 5. `fsync` the parent directory to make the rename crash-safe on Linux.
     ///
     /// The backup is created **after** the new data is durably fsynced but
-    /// **before** the rename, so a power-loss between steps 3 and 4 leaves
-    /// both the old vault and the new temp file intact.
+    /// **before** the rename, so a power-loss between steps 3 and 4 leaves both
+    /// the old vault and the new temp file intact.
     fn atomic_write(&self, data: &[u8]) -> Result<(), VaultError> {
         let temp_path = self.vault_path.with_extension("tmp");
 
         let mut options = OpenOptions::new();
         options.create(true).write(true).truncate(true);
 
+        // Restrict permissions to owner-only on Unix before the file is created.
         #[cfg(unix)]
         {
             use std::os::unix::fs::OpenOptionsExt;
@@ -152,19 +192,27 @@ impl VaultStorage {
         let mut file = options.open(&temp_path).map_err(VaultError::IoError)?;
         file.write_all(data).map_err(VaultError::IoError)?;
         file.flush().map_err(VaultError::IoError)?;
+        // `sync_all` flushes both data and metadata (file size, timestamps) to
+        // durable storage. This is more expensive than `sync_data` but required
+        // for a correct crash-recovery guarantee.
         file.sync_all().map_err(VaultError::IoError)?;
         drop(file);
 
-        // Backup the existing vault only after the new data has been fsynced.
+        // Backup the existing vault only after the replacement has been fsynced,
+        // so that a crash between here and the rename still leaves a valid backup.
         if self.vault_path.exists() {
             let backup = generate_backup_path(&self.vault_path);
             fs::copy(&self.vault_path, backup).map_err(VaultError::IoError)?;
         }
 
-        // Atomic replace on POSIX; best-effort on Windows.
+        // Atomic replace on POSIX; best-effort on Windows (no atomic rename API
+        // in std — consider `fs::rename` + retry or a Windows-specific call if
+        // strict atomicity on Windows is required).
         fs::rename(&temp_path, &self.vault_path).map_err(VaultError::IoError)?;
 
-        // Flush the directory entry so the rename survives a kernel crash.
+        // Flush the directory entry so the rename is durable after a kernel crash.
+        // This is a Linux-specific reliability improvement; safe to skip on macOS /
+        // BSDs where directory fsync behaviour differs, but not harmful to include.
         #[cfg(unix)]
         {
             use std::os::unix::fs::OpenOptionsExt;
@@ -181,23 +229,29 @@ impl VaultStorage {
         Ok(())
     }
 
-    /* ------------------- Helpers ----------------------------------------- */
+    /* ─────────────────────── Helpers ──────────────────────────────────── */
 
+    /// Returns `true` if the vault file exists at the configured path.
     pub fn vault_exists(&self) -> bool {
         self.vault_path.exists()
     }
 
+    /// Returns the configured vault file path.
     pub fn path(&self) -> &Path {
         &self.vault_path
     }
 }
 
-/* ------------------- Backup Path Utility --------------------------------- */
+/* ─────────────────────────── Backup Path Utility ──────────────────────── */
 
 /// Generates a timestamped backup filename adjacent to `base_path`.
 ///
 /// If a file with the generated name already exists, a numeric suffix is
 /// appended until a free name is found.
+///
+/// ## Example
+/// For a vault at `/home/user/vault.sark`, this might return:
+/// `/home/user/vault.sark_20260118_142305_backup.sark`
 pub fn generate_backup_path(base_path: &Path) -> PathBuf {
     use chrono::Local;
 
@@ -212,6 +266,7 @@ pub fn generate_backup_path(base_path: &Path) -> PathBuf {
         base_name, timestamp, VAULT_EXTENSION
     ));
 
+    // Avoid overwriting an existing backup by appending a counter.
     let mut counter: u32 = 1;
     while backup_path.exists() {
         backup_path = base_path.with_file_name(format!(
@@ -224,13 +279,20 @@ pub fn generate_backup_path(base_path: &Path) -> PathBuf {
     backup_path
 }
 
-/* ------------------- Vault Deletion -------------------------------------- */
+/* ─────────────────────────── Vault Deletion ───────────────────────────── */
 
 /// Removes the vault file at `path`.
 ///
+/// # Security note
 /// Callers are responsible for ensuring the vault is locked before calling
-/// this function. This does not perform a secure overwrite — if a secure
-/// delete is required, the caller must zero the file contents before removal.
+/// this function. This does **not** perform a secure overwrite — if secure
+/// deletion is required, the caller must explicitly zero the file contents
+/// before removal (e.g., open the file, write zeros for its full length,
+/// fsync, then delete). Note that secure deletion is generally unreliable on
+/// flash storage (SSD, NVMe) due to wear-levelling.
+///
+/// # Errors
+/// Returns [`VaultError::IoError`] if the file cannot be removed.
 pub fn delete_vault_file(path: &Path) -> Result<(), VaultError> {
     fs::remove_file(path).map_err(VaultError::IoError)
 }

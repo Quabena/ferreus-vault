@@ -27,17 +27,27 @@
 
 use tauri::State;
 
-use crate::clipboard::ClipboardState;
+use arboard::Clipboard;
+use std::thread;
+use std::time::Duration;
 
-/* -------------------- Copy to clipboard ---------------------------------- */
+use super::auth::AppState;
 
-/// Writes `content` to the system clipboard and arms the auto-clear timer.
-///
-/// `content` is borrowed (not cloned) before being passed to `copy_secure`,
-/// so no additional heap copy of the secret is made in this function.
 #[tauri::command]
-pub fn copy_to_clipboard(content: String, clipboard: State<ClipboardState>) -> Result<(), String> {
-    // Pass as &str — copy_secure accepts a borrow and does not retain a copy.
-    // The `content` String is dropped at the end of this function.
-    clipboard.copy_secure(&content)
+pub fn copy_password(password: String, state: State<AppState>) -> Result<(), String> {
+    let mut clipboard = Clipboard::new().map_err(|_| "clipboard error")?;
+
+    clipboard
+        .set_text(password.clone())
+        .map_err(|_| "clipboard write failed")?;
+
+    thread::spawn(move || {
+        std::thread::sleep(Duration::from_secs(20));
+
+        if let Ok(mut cb) = Clipboard::new() {
+            let _ = cb.set_text("");
+        }
+    });
+
+    Ok(())
 }

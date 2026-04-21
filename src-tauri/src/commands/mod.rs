@@ -36,6 +36,7 @@
 //! | set_auto_lock_timeout      | security   |                                |
 //! | get_auto_lock_timeout      | security   |                                |
 
+pub mod auth;
 pub mod clipboard;
 pub mod entries;
 pub mod security;

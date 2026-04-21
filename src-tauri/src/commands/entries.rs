@@ -25,13 +25,25 @@
 //! surfacing a password to the user is `copy_to_clipboard`, which writes
 //! directly to the system clipboard without the value ever reaching JS.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::State;
 
+use super::auth::AppState;
 use crate::state::AppState;
 
 use ferreus_core::errors::VaultError;
 use ferreus_core::vault::PasswordEntry;
+use ferreus_core::vault::VaultData;
+
+// ENtryDTO
+#[derive(Serialize, Deserialize)]
+pub struct EntryDTO {
+    pub id: String,
+    pub title: String,
+    pub username: String,
+    pub password: String,
+    pub notes: Option<String>,
+}
 
 /* ------------------- Safe entry view (password excluded) ----------------- */
 
@@ -50,26 +62,25 @@ pub struct EntryView {
 /* ------------------- List entries ---------------------------------------- */
 
 #[tauri::command]
-pub fn list_entries(state: State<AppState>) -> Result<Vec<EntryView>, String> {
-    let mut vault = state
-        .vault
-        .lock()
-        .map_err(|_| "Internal state error".to_string())?;
+pub fn list_entries(state: State<AppState>) -> Result<Vec<EntryDTO>, String> {
+    let vault = &state.vault;
 
-    vault
-        .with_vault_data(|data| {
-            data.entries
-                .iter()
-                .enumerate()
-                .map(|(i, entry)| EntryView {
-                    id: i, // was hardcoded to 1 — must be the loop index
-                    account_name: entry.account_name.clone(),
-                    username: entry.username.clone(),
-                    notes: entry.notes.clone(),
-                })
-                .collect::<Vec<_>>()
+    let entries = vault.list_entries().map_err(|e| format!("{:?}", e))?;
+
+    Ok(entries
+        .into_iter()
+        .map(|e| EntryDTO {
+            id: e.id,
+
+            title: e.title,
+
+            username: e.username,
+
+            password: e.password,
+
+            notes: e.notes,
         })
-        .map_err(sanitize_error)
+        .collect())
 }
 
 /* ------------------- Add entry ------------------------------------------- */
