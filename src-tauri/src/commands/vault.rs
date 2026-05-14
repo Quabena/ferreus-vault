@@ -11,48 +11,60 @@
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 
-//! Vault lifecycle command handlers
+//! Vault lifecycle command handlers.
 //!
 //! # Mutex discipline
-//! The `AppState::vault` mutex is held for as short a time as possible. In
-//! particular, `create_vault` validates the password and resolves the vault
-//! path *before* acquiring the mutex, so the expensive Argon2id KDF that
-//! runs inside `VaultManager::create_vault` does not starve other command
-//! handlers waiting for the same lock.
+//! The `AppState::vault` mutex is held for as short a time as possible.
+//! `create_vault` validates the password **before** acquiring the lock, so a
+//! rejected password never touches the vault manager and never delays other
+//! command handlers waiting for the same mutex.
 //!
 //! # Password handling
-//! Passwords arrive as `String` values from Tauri's IPC deserializer. We
-//! pass them as `&str` borrows directly into the library and let them drop
-//! at the end of each command function. No additional heap copy is made.
+//! Passwords arrive as `String` values from Tauri's IPC deserializer. They
+//! are passed as `&str` borrows into the library and dropped at the end of
+//! each command function. No additional heap copy is made at this layer.
+//!
+//! # Error sanitization
+//! All `VaultError` variants are mapped to safe, user-facing strings via
+//! [`sanitize_error`] before being returned over IPC. Internal `Debug`
+//! output (`{:?}`) is never forwarded — it may contain implementation detail
+//! that aids an attacker.
 
 use serde::Serialize;
 use tauri::State;
 
 use crate::state::AppState;
 
-use ferreus_core::errors::VaultError;
-use ferreus_core::validate_master_password;
+// FIX: corrected crate name from `ferreus_core` to `ferreus_vault` throughout.
+use ferreus_vault::errors::VaultError;
+use ferreus_vault::validate_master_password;
 
-/* ------------------- Response types -------------------------------------- */
+/* ─────────────────────────── Response types ───────────────────────────── */
 
+/// Vault status payload returned by [`vault_status`].
 #[derive(Serialize)]
 pub struct VaultStatus {
-    /// Whether the vault is currently unlocked and its data accessible.
+    /// Whether the vault is currently unlocked and its data accessible in memory.
     pub unlocked: bool,
-    /// Whether a vault file exists on disk (i.e. vault has been created).
+    /// Whether a vault file exists on disk (i.e., the vault has been created).
     pub vault_exists: bool,
 }
 
-/* ------------------- Create vault ---------------------------------------- */
+/* ─────────────────────────── create_vault ─────────────────────────────── */
 
 /// Creates a new vault protected by `password`.
 ///
-/// Password complexity is validated at this boundary before the mutex is
-/// acquired, so a rejected password never touches the vault manager.
+/// Password complexity is validated **before** the mutex is acquired, so a
+/// rejected password never enters the vault manager and the lock window for
+/// the expensive Argon2id KDF is kept as narrow as possible.
+///
+/// # Errors
+/// - `"Operation failed"` if the password fails complexity validation.
+/// - `"Operation failed"` if a vault already exists at the configured path.
+/// - `"Internal state error"` if the vault mutex is poisoned.
 #[tauri::command]
 pub fn create_vault(password: String, state: State<AppState>) -> Result<(), String> {
-    // Validate before acquiring the mutex — keeps the lock window narrow
-    // and avoids running the KDF while holding the lock unnecessarily.
+    // Validate complexity BEFORE acquiring the mutex.
     validate_master_password(&password).map_err(sanitize_error)?;
 
     let vault = state
@@ -61,14 +73,25 @@ pub fn create_vault(password: String, state: State<AppState>) -> Result<(), Stri
         .map_err(|_| "Internal state error".to_string())?;
 
     vault.create_vault(&password).map_err(sanitize_error)
-    // Guard released here. The Argon2id KDF runs inside create_vault while
-    // the lock is held; for a future optimisation this could be restructured
-    // to derive the key outside the lock and pass it in, but that requires a
-    // library API change. The current window is bounded and acceptable.
+    // Guard released here. The Argon2id KDF runs inside `create_vault` while
+    // the lock is held. For a future optimisation, the KDF could be run
+    // outside the lock and the derived key passed in, but this requires a
+    // library API change. The current window is bounded and acceptable for
+    // an operation that runs at most once per device lifetime.
 }
 
-/* ------------------- Unlock vault ---------------------------------------- */
+/* ─────────────────────────── unlock_vault ─────────────────────────────── */
 
+/// Decrypts the vault and loads it into memory using `password`.
+///
+/// On success, the vault is unlocked and entry commands become available.
+/// On failure, a generic error is returned — the caller cannot distinguish
+/// a wrong password from a corrupted vault file (intentional, to prevent
+/// oracle attacks).
+///
+/// # Errors
+/// - `"Invalid password or corrupted vault"` on authentication failure.
+/// - `"Internal state error"` if the vault mutex is poisoned.
 #[tauri::command]
 pub fn unlock_vault(password: String, state: State<AppState>) -> Result<(), String> {
     let mut vault = state
@@ -76,18 +99,29 @@ pub fn unlock_vault(password: String, state: State<AppState>) -> Result<(), Stri
         .lock()
         .map_err(|_| "Internal state error".to_string())?;
 
+    // The generic error message is intentional — distinguishing wrong-password
+    // from corrupted-vault would assist an oracle attacker.
     vault
         .unlock_vault(&password)
         .map_err(|_| "Invalid password or corrupted vault".to_string())
 }
 
-/* ------------------- Lock vault ------------------------------------------ */
+/* ─────────────────────────── lock_vault ───────────────────────────────── */
 
+/// Locks the vault, dropping and zeroizing all in-memory key material and
+/// decrypted vault data.
+///
+/// Safe to call when the vault is already locked — the operation is idempotent.
+///
+/// # Errors
+/// - `"Internal state error"` if the outer `AppState` mutex is poisoned.
+///
+/// # Note on inner vs outer mutex
+/// `VaultManager::lock_vault` acquires the inner `vault_data` and `master_key`
+/// mutexes internally. The outer `AppState` mutex we acquire here is a
+/// different lock — there is no deadlock risk.
 #[tauri::command]
 pub fn lock_vault(state: State<AppState>) -> Result<(), String> {
-    // lock_vault operates on the Arc<Mutex<>> fields inside VaultManager,
-    // which are separate from the outer AppState mutex, so there is no
-    // deadlock risk here. We still release the outer guard promptly.
     let vault = state
         .vault
         .lock()
@@ -95,11 +129,18 @@ pub fn lock_vault(state: State<AppState>) -> Result<(), String> {
 
     vault.lock_vault();
     Ok(())
-    // Guard released here.
+    // Outer guard released here; `lock_vault` has already dropped the inner guards.
 }
 
-/* ------------------- Vault status ---------------------------------------- */
+/* ─────────────────────────── vault_status ─────────────────────────────── */
 
+/// Returns the current vault status for the frontend.
+///
+/// Used on startup and after unlock/lock operations to keep the UI in sync
+/// with the backend state.
+///
+/// # Errors
+/// - `"Internal state error"` if the vault mutex is poisoned.
 #[tauri::command]
 pub fn vault_status(state: State<AppState>) -> Result<VaultStatus, String> {
     let vault = state
@@ -107,8 +148,6 @@ pub fn vault_status(state: State<AppState>) -> Result<VaultStatus, String> {
         .lock()
         .map_err(|_| "Internal state error".to_string())?;
 
-    // vault_path was removed from AppState in the state.rs fix.
-    // VaultManager::vault_path() is the authoritative source.
     let vault_exists = vault.vault_path().exists();
 
     Ok(VaultStatus {
@@ -117,12 +156,18 @@ pub fn vault_status(state: State<AppState>) -> Result<VaultStatus, String> {
     })
 }
 
-/* ------------------- Error sanitization ---------------------------------- */
+/* ─────────────────────────── Error sanitization ───────────────────────── */
 
-/// Maps internal `VaultError` variants to safe, user-facing strings.
+/// Maps internal [`VaultError`] variants to safe, generic user-facing strings.
+///
+/// `Debug` output (`{:?}`) is **never** forwarded over IPC — it may contain
+/// algorithm-specific detail (e.g., Argon2 parameters, file paths, internal
+/// state) that could assist an attacker or leak implementation details.
 fn sanitize_error(err: VaultError) -> String {
     match err {
         VaultError::VaultLocked => "Vault is locked".to_string(),
+        VaultError::InvalidPassword => "Invalid password".to_string(),
+        VaultError::EntryNotFound => "Entry not found".to_string(),
         _ => "Operation failed".to_string(),
     }
 }

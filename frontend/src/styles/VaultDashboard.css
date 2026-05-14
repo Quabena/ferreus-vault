@@ -1,0 +1,87 @@
+/* features/vault/VaultDashboard.css */
+
+.dashboard-root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  background: var(--surface-0);
+}
+
+/* ── Header ─────────────────────────────────────────────────────────────── */
+.dashboard-header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--sp-6);
+  height: 48px;
+  background: var(--surface-1);
+  border-bottom: 1px solid var(--border-dim);
+
+  /* Tauri drag region — lets the user drag the window by the header */
+  -webkit-app-region: drag;
+}
+
+/* Buttons inside the drag region must opt out of dragging */
+.dashboard-header button,
+.dashboard-header input,
+.dashboard-header a {
+  -webkit-app-region: no-drag;
+}
+
+.dashboard-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.dashboard-brand-name {
+  font-size: 13px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+/* ── Toolbar ─────────────────────────────────────────────────────────────── */
+.dashboard-toolbar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--sp-4) var(--sp-6);
+  border-bottom: 1px solid var(--border-dim);
+}
+
+.dashboard-add-btn {
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  padding: var(--sp-2) var(--sp-4);
+}
+
+.dashboard-count {
+  font-size: 11px;
+  color: var(--text-dim);
+  letter-spacing: 0.05em;
+}
+
+/* ── Global error bar ───────────────────────────────────────────────────── */
+.dashboard-error-bar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: var(--sp-3) var(--sp-6) 0;
+  border-radius: var(--r-sm);
+}
+
+/* ── Content ─────────────────────────────────────────────────────────────── */
+.dashboard-content {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  padding: var(--sp-4) var(--sp-6) var(--sp-6);
+  display: flex;
+  flex-direction: column;
+}
