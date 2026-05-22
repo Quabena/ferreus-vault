@@ -1,0 +1,80 @@
+.sec-indicator {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+/* ── Timeout badge ──────────────────────────────────────────────────────── */
+.sec-timeout__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  background: var(--surface-2);
+  border: 1px solid var(--border-dim);
+  border-radius: var(--r-sm);
+  color: var(--text-secondary);
+  font-family: var(--font-body);
+  font-size: 11px;
+  padding: 3px 8px;
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast) ease,
+    color var(--dur-fast) ease;
+}
+.sec-timeout__badge:hover {
+  border-color: var(--border-bright);
+  color: var(--text-primary);
+}
+
+.sec-icon {
+  color: var(--copper);
+  flex-shrink: 0;
+}
+
+.sec-saved {
+  color: var(--success);
+  font-size: 10px;
+}
+
+/* ── Edit form ──────────────────────────────────────────────────────────── */
+.sec-timeout__form {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sec-timeout__input {
+  width: 52px;
+  background: var(--surface-0);
+  border: 1px solid var(--copper);
+  border-radius: var(--r-sm);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 11px;
+  padding: 3px 6px;
+  outline: none;
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+.sec-timeout__input::-webkit-outer-spin-button,
+.sec-timeout__input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.sec-timeout__unit {
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.sec-timeout__err {
+  font-size: 10px;
+  color: var(--danger-bright);
+}
+
+/* ── Lock button ────────────────────────────────────────────────────────── */
+.sec-lock-btn {
+  font-size: 11px;
+  padding: 4px 10px;
+  gap: var(--sp-2);
+}

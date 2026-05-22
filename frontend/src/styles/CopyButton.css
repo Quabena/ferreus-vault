@@ -1,0 +1,45 @@
+/* features/vault/CopyButton.css */
+
+.copy-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: var(--r-sm);
+  font-family: var(--font-display);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  border: 1px solid var(--border-normal);
+  background: transparent;
+  color: var(--text-secondary);
+  transition:
+    background var(--dur-fast) ease,
+    border-color var(--dur-fast) ease,
+    color var(--dur-fast) ease;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.copy-btn:hover:not(:disabled) {
+  color: var(--text-primary);
+  border-color: var(--copper);
+  background: rgba(192, 96, 48, 0.08);
+}
+
+/* ── Copied state ───────────────────────────────────────────────────────── */
+.copy-btn--copied {
+  color: var(--success);
+  border-color: var(--success);
+  background: rgba(74, 128, 96, 0.1);
+  cursor: default;
+}
+
+/* ── Error state ────────────────────────────────────────────────────────── */
+.copy-btn--error {
+  color: var(--danger-bright);
+  border-color: var(--danger);
+  background: rgba(160, 64, 64, 0.1);
+  cursor: default;
+}

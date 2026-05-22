@@ -35,7 +35,6 @@ use tauri::State;
 
 use crate::state::AppState;
 
-// FIX: corrected crate name from `ferreus_core` to `ferreus_vault` throughout.
 use ferreus_vault::errors::VaultError;
 use ferreus_vault::validate_master_password;
 

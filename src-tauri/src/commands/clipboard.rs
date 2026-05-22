@@ -37,7 +37,7 @@ use tauri::{AppHandle, Manager, State};
 use crate::clipboard::ClipboardState;
 use crate::state::AppState;
 
-use ferreus_vault::errors::VaultError;
+// use ferreus_vault::errors::VaultError;
 
 /* ─────────────────────────── copy_to_clipboard ────────────────────────── */
 
@@ -101,7 +101,7 @@ pub fn copy_password(index: usize, state: State<AppState>, app: AppHandle) -> Re
     // We copy it out as a plain `String` so the guard is not held during
     // the (potentially blocking) clipboard call.
     let password = {
-        let vault = state
+        let mut vault = state
             .vault
             .lock()
             .map_err(|_| "Internal state error".to_string())?;

@@ -44,9 +44,6 @@ use std::sync::Mutex;
 
 use tauri::AppHandle;
 
-// FIX: the original code imported from `ferreus_core`, but the library crate
-// is named `ferreus_vault` (per lib.rs and Cargo.toml). Corrected the import
-// path so the build resolves the correct crate.
 use ferreus_vault::VaultManager;
 
 /// Application-display name, used as the vault subdirectory name inside the
@@ -74,13 +71,7 @@ pub struct AppState {
 impl AppState {
     /// Resolves the vault directory, creates it with secure permissions if
     /// absent, and constructs an initial **locked** [`VaultManager`].
-    ///
-    /// # Errors
-    /// Returns a `String` error message if:
-    /// - The OS cannot provide an app-data directory.
-    /// - Directory creation fails (permission error, filesystem full, etc.).
-    ///
-    /// The error string is surfaced by Tauri as a setup-phase error dialog.
+
     pub fn new(app: &AppHandle) -> Result<Self, String> {
         // Resolve the platform-specific app data directory.
         // `path_resolver().app_data_dir()` returns `None` on platforms where
@@ -127,9 +118,6 @@ impl AppState {
 /// Calling this function on an already-existing directory is a no-op on both
 /// paths (`recursive(true)` / `create_dir_all` both succeed if the directory
 /// already exists).
-///
-/// # Errors
-/// Returns a `String` describing the OS error if directory creation fails.
 fn create_vault_dir(path: &std::path::Path) -> Result<(), String> {
     #[cfg(unix)]
     {

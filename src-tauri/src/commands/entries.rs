@@ -29,39 +29,16 @@
 //! `list_entries` returns [`EntryView`] values, which deliberately omit the
 //! `password` field. The frontend never receives a raw password over IPC.
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use tauri::State;
 
-// FIX: removed the duplicate and conflicting `use super::auth::AppState` import.
-// The original file imported *both* `super::auth::AppState` and
-// `crate::state::AppState` — two different structs with the same name in the
-// same scope. This is an unambiguous compile error ("ambiguous associated type").
-// The correct import is `crate::state::AppState`, which is the single canonical
-// AppState used throughout the Tauri layer.
 use crate::state::AppState;
 
-// FIX: corrected crate name from `ferreus_core` to `ferreus_vault` throughout.
 use ferreus_vault::errors::VaultError;
 use ferreus_vault::vault::PasswordEntry;
 
 /* ─────────────────────────── Safe IPC View ────────────────────────────── */
 
-/// A sanitised, read-only view of a vault entry that is safe to send over IPC.
-///
-/// The `password` field is **intentionally absent**. Sending passwords over
-/// IPC exposes them to developer-tool inspection and the JavaScript heap.
-/// Use the `copy_password` command to deliver a password to the user via the
-/// system clipboard, bypassing the JS layer entirely.
-//
-// FIX: removed `EntryDTO`, which included a `password: String` field and was
-// used by `list_entries`. Returning passwords over IPC in any form is a
-// security violation regardless of whether the caller "intends" to display
-// them. `EntryView` — which already existed in the file but was unused — is
-// the correct return type and is now used exclusively.
-//
-// Also removed the stale `id: String` / `title: String` field names that do
-// not match the library's `PasswordEntry` struct (which uses `account_name`
-// and index-based addressing, not a UUID string `id` or a `title` field).
 #[derive(Serialize)]
 pub struct EntryView {
     /// Zero-based index used to address this entry in update/delete/copy operations.
@@ -81,21 +58,9 @@ pub struct EntryView {
 ///
 /// The frontend uses these records for display and to obtain the `index`
 /// needed for `update_entry`, `delete_entry`, and `copy_password`.
-///
-/// # Errors
-/// - `"Vault is locked"` if the vault has not been unlocked.
-//
-// FIX: the original implementation:
-//   1. Called `vault.list_entries()` directly on `&state.vault` (an
-//      `Arc<VaultData>`), bypassing the mutex entirely and using methods that
-//      do not exist on `VaultData`.
-//   2. Returned `EntryDTO` which included `password` — a security violation.
-//   3. Mapped fields (`id`, `title`) that do not exist on `PasswordEntry`.
-// Replaced with a correct implementation using `with_vault_data` and
-// returning `EntryView` (password excluded).
 #[tauri::command]
 pub fn list_entries(state: State<AppState>) -> Result<Vec<EntryView>, String> {
-    let vault = state
+    let mut vault = state
         .vault
         .lock()
         .map_err(|_| "Internal state error".to_string())?;
@@ -125,9 +90,7 @@ pub fn list_entries(state: State<AppState>) -> Result<Vec<EntryView>, String> {
 /// happens automatically on lock in the current implementation). All string
 /// parameters are moved directly into the library — no extra heap copy is made
 /// at this layer.
-///
-/// # Errors
-/// - `"Vault is locked"` if the vault has not been unlocked.
+
 #[tauri::command]
 pub fn add_entry(
     account_name: String,
@@ -156,15 +119,7 @@ pub fn add_entry(
 /// Updates selected fields of the entry at `index`.
 ///
 /// Passing `None` for a field leaves it unchanged.
-///
-/// # Errors
-/// - `"Vault is locked"` if the vault has not been unlocked.
-/// - `"Entry not found"` if `index` is out of bounds.
-//
-// FIX: the outer `map_err(sanitize_error)?` and inner `map_err(|_| …)`
-// produced a type-error-prone double-Result chain. Flattened to a single
-// `and_then` that maps both the outer VaultError and the inner EntryNotFound
-// uniformly through `sanitize_error`.
+
 #[tauri::command]
 pub fn update_entry(
     index: usize,
@@ -190,16 +145,6 @@ pub fn update_entry(
 /* ─────────────────────────── Delete entry ─────────────────────────────── */
 
 /// Removes the entry at `index` from the unlocked vault.
-///
-/// # Errors
-/// - `"Vault is locked"` if the vault has not been unlocked.
-/// - `"Entry not found"` if `index` is out of bounds.
-//
-// FIX: the original nested closure returned `Ok(())` from the inner scope
-// even when `remove_entry` succeeded, discarding the removed entry. Simplified
-// to discard the return value explicitly with `let _ =`, which is cleaner and
-// makes the intent clear. The outer `map_err` propagates `VaultError::EntryNotFound`
-// correctly via `sanitize_error`.
 #[tauri::command]
 pub fn delete_entry(index: usize, state: State<AppState>) -> Result<(), String> {
     let mut vault = state

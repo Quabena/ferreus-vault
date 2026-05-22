@@ -9,7 +9,7 @@ repository = "https://github.com/Quabena/ferreus-vault/core"
 readme = "README.md"
 
 [lib]
-name = "ferreus_core"
+name = "ferreus_vault"
 path = "src/lib.rs"
 
 

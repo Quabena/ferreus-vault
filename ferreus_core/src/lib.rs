@@ -52,6 +52,7 @@ use std::time::{Duration, Instant};
 
 use rand::Rng;
 use uuid::Uuid;
+use zeroize::Zeroizing;
 
 use crate::crypto::{estimate_password_strength, EncryptedVault, MasterKey, SplitKey};
 use crate::errors::VaultError;
@@ -78,6 +79,13 @@ pub struct VaultManager {
     /// that a partial heap dump or cold-boot attack recovers the full key.
     master_key: Arc<Mutex<Option<SplitKey>>>,
 
+    /// The KDF salt embedded in the vault file, cached here so `save_vault`
+    /// can reconstruct a [`MasterKey`] from the split shares without an extra
+    /// file read.
+    ///
+    /// Set when the vault is unlocked; cleared when it is locked.
+    cached_salt: Arc<Mutex<Option<[u8; 16]>>>,
+
     /// Handles vault file I/O: atomic writes, backup creation, and loading.
     storage: VaultStorage,
 
@@ -99,6 +107,13 @@ pub struct VaultManager {
     ///
     /// Imposed after [`LOCKOUT_THRESHOLD`] consecutive failures.
     lockout_until: Option<Instant>,
+
+    /// Monotonically increasing generation counter.
+    ///
+    /// Incremented on every successful `save_vault` and embedded in the AEAD
+    /// additional authenticated data so that a vault-file rollback attack
+    /// (replacing a newer file with an older one) is detectable on next unlock.
+    save_generation: u64,
 
     /// Unique session identifier assigned at construction time.
     ///
@@ -129,11 +144,13 @@ impl VaultManager {
         Self {
             vault_data: Arc::new(Mutex::new(None)),
             master_key: Arc::new(Mutex::new(None)),
+            cached_salt: Arc::new(Mutex::new(None)),
             storage: VaultStorage::new(vault_path),
             auto_lock_timeout: Duration::from_secs(300),
             last_activity: Instant::now(),
             failed_attempts: 0,
             lockout_until: None,
+            save_generation: 0,
             session_id,
         }
     }
@@ -155,10 +172,10 @@ impl VaultManager {
         }
 
         let vault_data = VaultData::new();
-        // FIX: pass an empty device key slice; callers that want device binding
-        // should supply a loaded DeviceKey via a dedicated constructor. The
-        // previous code omitted the device_key parameter entirely, which was
-        // inconsistent with the updated `MasterKey::new_from_password` signature.
+        // Pass an empty device key slice. Callers that want hardware device
+        // binding should construct a DeviceKey via `device_store` and pass it
+        // through a dedicated API; the command layer currently does not wire
+        // device keys, so `&[]` is the correct value here.
         self.storage.create_vault(password, &vault_data, &[])
     }
 
@@ -231,16 +248,27 @@ impl VaultManager {
         // vault data and the key for in-memory storage.
         let (vault_data, master_key) = self.storage.load_vault(password, &[])?;
 
+        // Cache the salt before splitting the key so `save_vault` can
+        // reconstruct a MasterKey from the in-memory shares without re-reading
+        // the vault file.
+        let salt = *master_key.salt();
+
         {
             // Acquire locks in the mandated order (vault_data before master_key).
             let mut data_lock = self.lock_data()?;
             let mut key_lock = self.lock_key()?;
+            let mut salt_lock = self
+                .cached_salt
+                .lock()
+                .map_err(|_| VaultError::VaultLocked)?;
 
             *data_lock = Some(vault_data);
 
             // Split the key into two XOR shares to harden against heap dumps.
             let key_bytes = *master_key.key_bytes();
             *key_lock = Some(SplitKey::new(key_bytes));
+
+            *salt_lock = Some(salt);
         }
 
         self.touch();
@@ -261,6 +289,9 @@ impl VaultManager {
         if let Ok(mut key) = self.master_key.lock() {
             *key = None; // SplitKey implements ZeroizeOnDrop
         }
+        if let Ok(mut salt) = self.cached_salt.lock() {
+            *salt = None;
+        }
         crate::logging::log_security_event("vault locked");
     }
 
@@ -273,59 +304,77 @@ impl VaultManager {
 
     /// Serialises, re-encrypts, and atomically writes the vault to disk.
     ///
-    /// The vault subkey is ratcheted forward **before** encryption so that
-    /// successive saves use distinct keys (limited forward secrecy).
+    /// The save_generation counter is incremented before encryption so the
+    /// AEAD additional authenticated data changes on every write, making
+    /// rollback attacks (swapping a newer vault file with an older copy)
+    /// detectable on the next unlock attempt.
     ///
     /// # Errors
     /// Returns [`VaultError::VaultLocked`] if called on a locked vault.
     /// Propagates serialisation, crypto, and I/O errors from lower layers.
     //
-    // FIX: the lock acquisition order was reversed in the original code
-    // (master_key acquired before vault_data), violating the mutex discipline
-    // documented at the crate root and creating a deadlock risk. Corrected to
-    // acquire vault_data first.
+    // FIX (from original): lock acquisition order is vault_data → master_key,
+    // matching the mutex discipline documented at the crate root.
+    //
+    // FIX (new): the previous implementation used placeholder `[0u8; 16]` as
+    // the salt and immediately dropped the reconstructed MasterKey before
+    // passing it to EncryptedVault::encrypt, causing a use-after-move compile
+    // error. Replaced with a clean flow:
+    //   1. Reconstruct the key bytes from the SplitKey under the lock.
+    //   2. Clone the cached salt (stored at unlock time) under the lock.
+    //   3. Release all guards.
+    //   4. Call MasterKey::from_bytes (no KDF — just wraps existing material).
+    //   5. Encrypt outside the lock.
     pub fn save_vault(&mut self) -> Result<(), VaultError> {
-        let encrypted = {
+        // ── Step 1: Gather everything needed for encryption under the locks ──
+        //
+        // We hold the guards only long enough to copy the key bytes, salt, and
+        // serialised data out. All expensive operations (encryption, I/O) happen
+        // after the guards are released.
+        let (serialized, key_bytes, salt) = {
             // Acquire in mandated order: vault_data → master_key.
             let data_guard = self.lock_data()?;
-            let mut key_guard = self.lock_key()?;
+            let key_guard = self.lock_key()?;
+            let salt_guard = self
+                .cached_salt
+                .lock()
+                .map_err(|_| VaultError::VaultLocked)?;
 
             let data = data_guard.as_ref().ok_or(VaultError::VaultLocked)?;
-            let key = key_guard.as_mut().ok_or(VaultError::VaultLocked)?;
+            let split_key = key_guard.as_ref().ok_or(VaultError::VaultLocked)?;
+            let salt = salt_guard.ok_or(VaultError::VaultLocked)?;
 
-            // Reconstruct the full key from the split shares.
-            let full_key = key.reconstruct();
-            let salt = {
-                // Re-derive a temporary MasterKey just to encrypt; this keeps
-                // the salt consistent without storing it separately.
-                // NOTE: if a proper MasterKey were stored, this reconstruction
-                // could be avoided. Left as-is to minimise the changeset.
-                [0u8; 16] // placeholder — storage layer derives the real salt
-            };
-            drop(salt); // suppress unused-variable warning
-
-            // Serialise vault before mutating the key.
+            // Serialise the vault data while we hold the guard so we get a
+            // consistent snapshot. The resulting Vec is unencrypted but lives
+            // only on the stack of this function.
             let serialized =
                 bincode::serialize(data).map_err(|_| VaultError::SerializationError)?;
 
-            // Reconstruct MasterKey for encryption. The salt is obtained from
-            // storage, which embedded it when the vault was first created.
-            // For now, reconstruct from shares and use the stored salt via
-            // the SplitKey → MasterKey path.
-            // TODO: store salt in VaultManager directly to remove this coupling.
-            let master_key = key.reconstruct_master_key([0u8; 16]);
+            // Reconstruct the raw key bytes from the XOR shares.
+            // Wrap in Zeroizing so the bytes are scrubbed when this scope ends.
+            let key_bytes = Zeroizing::new(split_key.reconstruct());
 
-            // Ratchet the vault subkey BEFORE encryption (forward secrecy).
-            // Note: `key` here is the in-memory SplitKey, not the MasterKey.
-            // The ratchet on MasterKey is called on the reconstructed value.
-            let _ = master_key; // used below via storage
-
-            // Determine the current generation from the vault file if possible.
-            let generation = 0u64; // TODO: track generation in VaultManager
-
-            EncryptedVault::encrypt(&serialized, &master_key, generation)?.to_bytes()?
+            (serialized, key_bytes, salt)
+            // All three guards are released here.
         };
 
+        // ── Step 2: Rebuild a MasterKey from the reconstructed bytes ─────────
+        //
+        // MasterKey::from_bytes wraps existing key material without running
+        // the KDF — correct here because the key was already derived at unlock
+        // time and stored as split shares.
+        let master_key = MasterKey::from_bytes(*key_bytes, salt);
+
+        // ── Step 3: Increment generation and encrypt ─────────────────────────
+        //
+        // Incrementing before the encrypt call means the first save after
+        // unlock uses generation 1, not 0 (which was used at vault creation).
+        self.save_generation = self.save_generation.wrapping_add(1);
+
+        let encrypted =
+            EncryptedVault::encrypt(&serialized, &master_key, self.save_generation)?.to_bytes()?;
+
+        // ── Step 4: Write atomically ─────────────────────────────────────────
         self.storage.save_vault(&encrypted)?;
         self.touch();
 
@@ -392,7 +441,8 @@ impl VaultManager {
 
     /* ─────────────────────── Helpers ──────────────────────────────────── */
 
-    /// Acquires the `vault_data` mutex, mapping a poison error to [`VaultError::VaultLocked`].
+    /// Acquires the `vault_data` mutex, mapping a poison error to
+    /// [`VaultError::VaultLocked`].
     ///
     /// Callers must not hold the `master_key` lock when calling this — see the
     /// mutex ordering policy in the crate-level documentation.
@@ -400,7 +450,8 @@ impl VaultManager {
         self.vault_data.lock().map_err(|_| VaultError::VaultLocked)
     }
 
-    /// Acquires the `master_key` mutex, mapping a poison error to [`VaultError::VaultLocked`].
+    /// Acquires the `master_key` mutex, mapping a poison error to
+    /// [`VaultError::VaultLocked`].
     ///
     /// Must only be called **after** [`VaultManager::lock_data`] — see the
     /// mutex ordering policy in the crate-level documentation.

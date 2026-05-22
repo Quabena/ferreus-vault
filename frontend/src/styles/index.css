@@ -1,0 +1,310 @@
+/**
+ *
+ * Global design system for FerreusVault.
+ *
+ * Aesthetic: Industrial Iron — dark iron-plate surfaces, copper accent,
+ * monospace typography. A vault should feel like a physical safe, not a SaaS
+ * dashboard. Clean, heavy, deliberate.
+ *
+ * Font stack:
+ *   Display / headings : "Syne Mono" (Google Fonts) — geometric monospace
+ *   Body / UI          : "DM Mono" (Google Fonts) — readable mono
+ */
+
+@import url("https://fonts.googleapis.com/css2?family=Syne+Mono&family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&display=swap");
+
+/* ─────────────────────────── Design tokens ─────────────────────────────── */
+:root {
+  /* Surfaces */
+  --surface-0: #0c0c0e; /* deepest background */
+  --surface-1: #111114; /* card / panel */
+  --surface-2: #1a1a1f; /* elevated card */
+  --surface-3: #22222a; /* hover / selection */
+
+  /* Borders */
+  --border-dim: rgba(255, 255, 255, 0.06);
+  --border-normal: rgba(255, 255, 255, 0.1);
+  --border-bright: rgba(255, 255, 255, 0.18);
+
+  /* Copper accent system */
+  --copper-dim: #7a4428;
+  --copper: #c06030;
+  --copper-bright: #e07840;
+  --copper-glow: rgba(192, 96, 48, 0.25);
+
+  /* Semantic */
+  --text-primary: #e8e2d8;
+  --text-secondary: #8a8070;
+  --text-dim: #4a4440;
+
+  --success: #4a8060;
+  --danger: #a04040;
+  --danger-bright: #d05050;
+  --warning: #8a6020;
+
+  /* Typography */
+  --font-display: "Syne Mono", "Courier New", monospace;
+  --font-body: "DM Mono", "Courier New", monospace;
+
+  /* Spacing scale (8px base) */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-10: 40px;
+  --sp-12: 48px;
+  --sp-16: 64px;
+
+  /* Radius */
+  --r-sm: 3px;
+  --r-md: 6px;
+  --r-lg: 10px;
+
+  /* Motion */
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-expo: cubic-bezier(0.7, 0, 0.84, 0);
+  --dur-fast: 120ms;
+  --dur-mid: 240ms;
+  --dur-slow: 400ms;
+}
+
+/* ─────────────────────────── Reset ─────────────────────────────────────── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+body {
+  background: var(--surface-0);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 13px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  /* Prevent Tauri window text selection on drag */
+  user-select: none;
+}
+
+/* Allow selection in inputs and text areas */
+input,
+textarea {
+  user-select: text;
+}
+
+/* Scrollbar — thin copper track */
+::-webkit-scrollbar {
+  width: 4px;
+}
+::-webkit-scrollbar-track {
+  background: var(--surface-1);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--copper-dim);
+  border-radius: 2px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--copper);
+}
+
+/* ─────────────────────────── Typography helpers ────────────────────────── */
+.text-display {
+  font-family: var(--font-display);
+  letter-spacing: 0.04em;
+}
+
+.text-mono {
+  font-family: var(--font-body);
+}
+
+/* ─────────────────────────── Utility classes ───────────────────────────── */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* ─────────────────────────── Shared form elements ──────────────────────── */
+.fv-input {
+  width: 100%;
+  background: var(--surface-0);
+  border: 1px solid var(--border-normal);
+  border-radius: var(--r-sm);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 13px;
+  padding: var(--sp-3) var(--sp-4);
+  outline: none;
+  transition:
+    border-color var(--dur-fast) ease,
+    box-shadow var(--dur-fast) ease;
+}
+
+.fv-input::placeholder {
+  color: var(--text-dim);
+}
+
+.fv-input:focus {
+  border-color: var(--copper);
+  box-shadow: 0 0 0 3px var(--copper-glow);
+}
+
+.fv-input:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ─────────────────────────── Buttons ───────────────────────────────────── */
+.fv-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-5);
+  border-radius: var(--r-sm);
+  font-family: var(--font-display);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition:
+    background var(--dur-fast) ease,
+    border-color var(--dur-fast) ease,
+    color var(--dur-fast) ease,
+    box-shadow var(--dur-fast) ease,
+    opacity var(--dur-fast) ease;
+}
+
+.fv-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* Primary — filled copper */
+.fv-btn-primary {
+  background: var(--copper);
+  color: #fff;
+  border-color: var(--copper);
+}
+.fv-btn-primary:hover:not(:disabled) {
+  background: var(--copper-bright);
+  border-color: var(--copper-bright);
+  box-shadow: 0 0 16px var(--copper-glow);
+}
+
+/* Ghost — outline only */
+.fv-btn-ghost {
+  background: transparent;
+  color: var(--text-secondary);
+  border-color: var(--border-normal);
+}
+.fv-btn-ghost:hover:not(:disabled) {
+  color: var(--text-primary);
+  border-color: var(--border-bright);
+  background: var(--surface-2);
+}
+
+/* Danger */
+.fv-btn-danger {
+  background: transparent;
+  color: var(--danger-bright);
+  border-color: var(--danger);
+}
+.fv-btn-danger:hover:not(:disabled) {
+  background: rgba(160, 64, 64, 0.15);
+  border-color: var(--danger-bright);
+}
+
+/* Icon-only */
+.fv-btn-icon {
+  padding: var(--sp-2);
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+}
+.fv-btn-icon:hover:not(:disabled) {
+  color: var(--text-primary);
+  background: var(--surface-3);
+  border-radius: var(--r-sm);
+}
+
+/* ─────────────────────────── Error banner ──────────────────────────────── */
+.fv-error {
+  background: rgba(160, 64, 64, 0.12);
+  border: 1px solid var(--danger);
+  border-radius: var(--r-sm);
+  color: var(--danger-bright);
+  font-size: 12px;
+  padding: var(--sp-2) var(--sp-4);
+}
+
+/* ─────────────────────────── Animations ────────────────────────────────── */
+@keyframes fv-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fv-scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes fv-slide-right {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes fv-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+.animate-fade-in {
+  animation: fv-fade-in var(--dur-slow) var(--ease-out-expo) both;
+}
+.animate-scale-in {
+  animation: fv-scale-in var(--dur-slow) var(--ease-out-expo) both;
+}

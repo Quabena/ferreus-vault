@@ -1,0 +1,101 @@
+/* ── Backdrop ───────────────────────────────────────────────────────────── */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(4px);
+  z-index: 40;
+}
+
+/* ── Panel ──────────────────────────────────────────────────────────────── */
+.modal-panel {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 50;
+  width: 420px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+
+  background: var(--surface-2);
+  border: 1px solid var(--border-bright);
+  border-radius: var(--r-lg);
+  box-shadow:
+    0 40px 80px rgba(0, 0, 0, 0.7),
+    0 0 40px var(--copper-glow);
+}
+
+/* ── Header ─────────────────────────────────────────────────────────────── */
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--sp-5) var(--sp-6);
+  border-bottom: 1px solid var(--border-dim);
+}
+
+.modal-title {
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-primary);
+}
+
+.modal-close {
+  color: var(--text-dim);
+}
+
+/* ── Form ───────────────────────────────────────────────────────────────── */
+.modal-form {
+  padding: var(--sp-5) var(--sp-6) var(--sp-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.modal-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.modal-label {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+/* Password wrapper */
+.modal-pw-wrap {
+  position: relative;
+}
+
+.modal-pw-wrap .fv-input {
+  padding-right: 34px;
+}
+
+.modal-eye {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+/* Notes textarea */
+.modal-notes {
+  resize: vertical;
+  min-height: 72px;
+  font-size: 12px;
+}
+
+/* ── Actions ────────────────────────────────────────────────────────────── */
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sp-3);
+  margin-top: var(--sp-2);
+}
