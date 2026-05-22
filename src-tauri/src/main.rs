@@ -66,20 +66,11 @@ fn main() {
         .setup(|app| {
             let app_handle = app.handle();
 
-            // ── 1. Initialise vault state ──────────────────────────────────
-            //
-            // `AppState::new` resolves the vault directory, creates it if
-            // absent (with mode 0o700 on Unix), and constructs a locked
-            // `VaultManager`. Any failure here surfaces as a Tauri setup
-            // error with a user-facing dialog rather than a silent crash.
-            //
-            // FIX: replaced the verbose `Box::<dyn std::error::Error>::from(e)`
-            // with the idiomatic `.into()` coercion. `String` implements
-            // `Into<Box<dyn Error>>` in std, so this compiles identically but
-            // is cleaner and less fragile if the error type changes.
-            let state = AppState::new(&app_handle).map_err(|e| -> Box<dyn std::error::Error> {
-                e.into()
-            })?;
+            // `AppState::new` resolves the vault directory, creates it if absent
+            // (with mode 0o700 on Unix), and constructs a locked `VaultManager`.
+            // Failure surfaces as a Tauri setup error with a user-facing dialog.
+            let state = AppState::new(&app_handle)
+                .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
 
             app.manage(state);
 
@@ -114,15 +105,10 @@ fn main() {
                 let app_handle = event.window().app_handle();
 
                 if let Some(state) = app_handle.try_state::<ShutdownState>() {
-                    // `take()` leaves `None` behind, so a second `Destroyed`
-                    // event (which Tauri may emit on some platforms) is a no-op.
-                    //
-                    // FIX: replaced `.unwrap()` on the mutex lock with a
-                    // guarded `if let`. A poisoned mutex here (extremely
-                    // unlikely but possible if a command handler panicked)
-                    // would cause an unrecoverable panic during teardown.
-                    // Using `if let` degrades gracefully — the handle is not
-                    // signalled, but the process is already shutting down.
+                    // `take()` leaves `None` behind, making a second `Destroyed`
+                    // event (which some platforms emit) a safe no-op.
+                    // Using `if let` rather than `unwrap` degrades gracefully
+                    // if the mutex is poisoned during teardown.
                     if let Ok(mut guard) = state.handle.lock() {
                         if let Some(handle) = guard.take() {
                             handle.signal();
@@ -132,17 +118,22 @@ fn main() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            // Vault lifecycle
             commands::vault::create_vault,
             commands::vault::unlock_vault,
             commands::vault::lock_vault,
             commands::vault::vault_status,
+            // Entry CRUD
             commands::entries::add_entry,
             commands::entries::update_entry,
             commands::entries::delete_entry,
             commands::entries::list_entries,
+            // Clipboard
             commands::clipboard::copy_to_clipboard,
             commands::clipboard::copy_password,
+            // Security policy
             commands::security::set_auto_lock_timeout,
+            commands::security::get_auto_lock_timeout,
         ])
         .run(tauri::generate_context!())
         .expect("fatal: FerreusVault failed to start");

@@ -69,11 +69,7 @@ const MAX_CLIPBOARD_TIMEOUT_SECS: u64 = 60;
 /// # Mutex discipline
 /// The vault mutex is released **before** the clipboard timeout is updated, so
 /// there is no risk of holding two locks simultaneously.
-///
-/// # Errors
-/// Returns a validation error string if `seconds` is out of range, or
-/// `"Internal state error"` if the vault mutex is poisoned (should not occur
-/// in normal operation).
+
 #[tauri::command]
 pub fn set_auto_lock_timeout(
     seconds: u64,
@@ -104,9 +100,7 @@ pub fn set_auto_lock_timeout(
     // degrades gracefully rather than returning an error, since the vault
     // timeout was already successfully applied.
     if let Some(clipboard) = app.try_state::<ClipboardState>() {
-        clipboard.set_timeout(Duration::from_secs(
-            seconds.min(MAX_CLIPBOARD_TIMEOUT_SECS),
-        ));
+        clipboard.set_timeout(Duration::from_secs(seconds.min(MAX_CLIPBOARD_TIMEOUT_SECS)));
     }
 
     Ok(())
@@ -117,9 +111,7 @@ pub fn set_auto_lock_timeout(
 /// Returns the current vault inactivity timeout in seconds.
 ///
 /// Used by the frontend to display and pre-populate the security settings UI.
-///
-/// # Errors
-/// Returns `"Internal state error"` if the vault mutex is poisoned.
+
 #[tauri::command]
 pub fn get_auto_lock_timeout(state: State<AppState>) -> Result<u64, String> {
     let vault = state

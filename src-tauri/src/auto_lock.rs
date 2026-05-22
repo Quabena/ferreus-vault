@@ -83,11 +83,6 @@ impl ShutdownHandle {
     /// Uses `SeqCst` to ensure the write is immediately visible across threads
     /// without relying on cache coherency timing.
     pub fn signal(&self) {
-        // FIX: upgraded from `Ordering::Relaxed` to `Ordering::SeqCst`.
-        // `Relaxed` provides no cross-thread ordering guarantees; on some
-        // architectures the thread might not observe the flag update for an
-        // unbounded number of iterations. `SeqCst` ensures the store is
-        // globally visible before the function returns.
         self.flag.store(true, Ordering::SeqCst);
     }
 }
@@ -121,10 +116,6 @@ pub fn start_auto_lock_task(app: AppHandle) -> ShutdownHandle {
             // Sleep first so the thread does not fire immediately on startup.
             thread::sleep(POLL_INTERVAL);
 
-            // Check shutdown flag before doing any work.
-            // FIX: upgraded from `Ordering::Relaxed` to `Ordering::SeqCst`
-            // to match the store ordering in `ShutdownHandle::signal` and
-            // ensure the flag is observed promptly.
             if thread_flag.load(Ordering::SeqCst) {
                 break;
             }
@@ -173,8 +164,9 @@ pub fn start_auto_lock_task(app: AppHandle) -> ShutdownHandle {
                     // `guard` dropped here — clipboard call below is lock-free.
                 }
                 Err(_) => {
-                    // Mutex is still poisoned; log and skip.
-                    // TODO: expose this via the logging module once available.
+                    // Poisoned mutex — vault is in an indeterminate state.
+                    // Skip this cycle; the vault remains locked by definition
+                    // when its mutex is poisoned.
                     false
                 }
             };

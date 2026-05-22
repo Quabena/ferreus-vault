@@ -90,7 +90,6 @@ pub fn list_entries(state: State<AppState>) -> Result<Vec<EntryView>, String> {
 /// happens automatically on lock in the current implementation). All string
 /// parameters are moved directly into the library — no extra heap copy is made
 /// at this layer.
-
 #[tauri::command]
 pub fn add_entry(
     account_name: String,
@@ -119,7 +118,6 @@ pub fn add_entry(
 /// Updates selected fields of the entry at `index`.
 ///
 /// Passing `None` for a field leaves it unchanged.
-
 #[tauri::command]
 pub fn update_entry(
     index: usize,

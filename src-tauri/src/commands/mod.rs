@@ -46,10 +46,6 @@
 //! | `auth::lock_vault`    | Superseded by `vault::lock_vault`.             |
 //! | `auth::create_vault`  | Superseded by `vault::create_vault`.           |
 
-// FIX: `auth` is retained as a module declaration so existing code that
-// references `super::auth` continues to compile. The module itself now
-// contains only documentation and no command handlers or conflicting types.
-// See `auth.rs` for the full migration notes.
 pub mod auth;
 pub mod clipboard;
 pub mod entries;
@@ -72,11 +68,6 @@ use tauri::generate_handler;
 /// 1. Implement the function in the appropriate submodule with `#[tauri::command]`.
 /// 2. Add it to the `generate_handler![]` list below.
 /// 3. Update the authoritative command table in this module's doc-comment.
-//
-// FIX: the original table listed `copy_to_clipboard` but `copy_password` was
-// missing despite being the primary safe mechanism for delivering passwords.
-// Both are now registered. The old `auth::` commands are absent — they have
-// been replaced by `vault::` equivalents that use the correct AppState.
 pub fn register_commands() -> impl Fn(tauri::Invoke<tauri::Wry>) + Send + Sync + 'static {
     generate_handler![
         // Vault lifecycle

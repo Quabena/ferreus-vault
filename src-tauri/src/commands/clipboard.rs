@@ -37,7 +37,7 @@ use tauri::{AppHandle, Manager, State};
 use crate::clipboard::ClipboardState;
 use crate::state::AppState;
 
-// use ferreus_vault::errors::VaultError;
+use ferreus_vault::errors::VaultError;
 
 /* ─────────────────────────── copy_to_clipboard ────────────────────────── */
 
@@ -51,24 +51,6 @@ use crate::state::AppState;
 /// # Errors
 /// Returns a `String` error if the system clipboard is unavailable or if
 /// writing fails.
-//
-// FIX: the original `copy_password` command:
-//   1. Bypassed `ClipboardState` entirely and spun up its own raw
-//      `thread::spawn` + `arboard::Clipboard` — duplicating logic, ignoring
-//      the generation counter, and never updating the ownership hash so
-//      `clear_if_owned` on auto-lock would not clear this content.
-//   2. Called `password.clone()` unnecessarily before passing to `set_text`,
-//      creating an extra heap copy of the secret.
-//   3. Used `map_err(|_| "clipboard error")` returning a `&str` literal
-//      rather than a `String`, which would not compile as `Result<(), String>`.
-//   4. Imported `super::auth::AppState` — the wrong (and duplicated) AppState.
-//   5. The `state: State<AppState>` parameter was accepted but never used,
-//      leaking an unused-variable warning and suggesting the handler does not
-//      actually need vault access (which it does not for a general copy).
-//
-// Replaced with a clean implementation that delegates entirely to
-// `ClipboardState::copy_secure`, which handles generation tracking,
-// ownership hashing, and auto-clear via the shared infrastructure.
 #[tauri::command]
 pub fn copy_to_clipboard(content: String, app: AppHandle) -> Result<(), String> {
     let clipboard = app
@@ -136,10 +118,10 @@ pub fn copy_password(index: usize, state: State<AppState>, app: AppHandle) -> Re
 ///
 /// `Debug` output is intentionally not forwarded over IPC — it may contain
 /// internal detail that aids an attacker or reveals implementation structure.
-fn sanitize_error(err: ferreus_vault::errors::VaultError) -> String {
+fn sanitize_error(err: VaultError) -> String {
     match err {
-        ferreus_vault::errors::VaultError::VaultLocked => "Vault is locked".to_string(),
-        ferreus_vault::errors::VaultError::EntryNotFound => "Entry not found".to_string(),
+        VaultError::VaultLocked => "Vault is locked".to_string(),
+        VaultError::EntryNotFound => "Entry not found".to_string(),
         _ => "Operation failed".to_string(),
     }
 }

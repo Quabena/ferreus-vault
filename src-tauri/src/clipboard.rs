@@ -128,8 +128,7 @@ impl ClipboardState {
         // Write to the clipboard FIRST, before mutating internal state.
         // If the clipboard write fails, we leave our internal state unchanged
         // so the previous ownership claim remains valid.
-        let mut clipboard =
-            Clipboard::new().map_err(|e| format!("Clipboard unavailable: {e}"))?;
+        let mut clipboard = Clipboard::new().map_err(|e| format!("Clipboard unavailable: {e}"))?;
 
         clipboard
             .set_text(content)
