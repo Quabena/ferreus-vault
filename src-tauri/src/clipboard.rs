@@ -119,11 +119,7 @@ impl ClipboardState {
     ///
     /// If a previous auto-clear timer is still pending, it is invalidated by
     /// the generation counter increment and will exit without clearing.
-    ///
-    /// # Errors
-    /// Returns a `String` error if the system clipboard is unavailable or if
-    /// writing to it fails. The vault entry is not affected by clipboard
-    /// errors.
+
     pub fn copy_secure(&self, content: &str) -> Result<(), String> {
         // Write to the clipboard FIRST, before mutating internal state.
         // If the clipboard write fails, we leave our internal state unchanged

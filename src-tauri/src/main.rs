@@ -95,14 +95,14 @@ fn main() {
 
             Ok(())
         })
-        .on_window_event(|event| {
+        .on_window_event(|window, event| {
             // Signal the watchdog thread to stop when the window is destroyed.
             //
             // Using `WindowEvent::Destroyed` (rather than `CloseRequested`)
             // ensures the thread is stopped only when the window is fully gone,
             // not when the user merely requests a close that might be cancelled.
-            if let tauri::WindowEvent::Destroyed = event.event() {
-                let app_handle = event.window().app_handle();
+            if let tauri::WindowEvent::Destroyed = event {
+                let app_handle = window.app_handle();
 
                 if let Some(state) = app_handle.try_state::<ShutdownState>() {
                     // `take()` leaves `None` behind, making a second `Destroyed`

@@ -44,7 +44,7 @@ use std::sync::{
 use std::thread;
 use std::time::Duration;
 
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 
 use crate::clipboard::ClipboardState;
 use crate::state::AppState;
@@ -189,7 +189,7 @@ pub fn start_auto_lock_task(app: AppHandle) -> ShutdownHandle {
             // The `vault_locked` event causes the UI to transition to the
             // locked screen. Emit errors are intentionally ignored — the
             // vault is already locked regardless of whether the event arrives.
-            let _ = app.emit_all("vault_locked", ());
+            let _ = app.emit("vault_locked", ());
         }
     });
 

@@ -1,17 +1,18 @@
 /**
- * Modal dialog for creating a new entry or editing an existing one
+ * features/vault/EntryModal.tsx
  *
- * When `entry` is null, the modal is in "add" mode
- * When `entry` is provided, it is in "edit" mode
+ * Modal dialog for creating a new entry or editing an existing one.
+ *
+ * When `entry` is null, the modal is in "add" mode.
+ * When `entry` is provided, it is in "edit" mode.
  *
  * The password field is write-only from the frontend's perspective:
- *  - In add mode, the user types a new password and it is sent to the backend
- *  - In the edit mode, the field starts empty; leaving it empty means "keep exisitng"
+ * - In add mode, the user types a new password and it is sent to the backend.
+ * - In edit mode, the field starts empty; leaving it empty means "keep existing".
+ *   If the user types a new value, it replaces the existing one.
  *
- * If the user types a new value, it replaces the existing one
- *
- * The password is NEVER stored in component state beyond duratin of this
- * intraction. It is moved into the IPC call and then the field is cleared
+ * The password is NEVER stored in component state beyond the duration of this
+ * form interaction. It is moved into the IPC call and then the field is cleared.
  */
 
 import { useRef, useEffect, type FormEvent, type KeyboardEvent } from "react";

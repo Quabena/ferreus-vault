@@ -7,10 +7,10 @@ description = "Tauri GUI shell for Ferreus Vault"
 license = "GPL-3.0-only"
 
 [build-dependencies]
-tauri-build = { version = "1.5", features = [] }
+tauri-build = { version = "2.1", features = [] }
 
 [dependencies]
-tauri = { version = "1.5" }
+tauri = { version = "2.1", features = [] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 zeroize = { workspace = true }

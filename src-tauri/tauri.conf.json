@@ -1,12 +1,25 @@
 {
-  "tauri": {
-    "windows": [{}]
-  },
+  "$schema": "https://schema.tauri.app/config/2",
+
+  "productName": "Ferreus Vault",
+  "version": "0.1.0",
+  "identifier": "com.quabena.ferreusvault",
 
   "build": {
-    "beforeDevCommand": "cd frontend && npm run dev",
-    "beforeBuildCommand": "cd frontend && npm run build",
-    "devPath": "http://localhost:5173",
-    "distDir": "../frontend/dist"
+    "beforeDevCommand": "npm --prefix ../frontend run dev",
+    "beforeBuildCommand": "npm --prefix ../frontend run build",
+
+    "devUrl": "http://localhost:5173",
+    "frontendDist": "../frontend/dist"
+  },
+
+  "app": {
+    "windows": [
+      {
+        "title": "Ferreus Vault",
+        "width": 1200,
+        "height": 800
+      }
+    ]
   }
 }

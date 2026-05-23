@@ -46,6 +46,8 @@ use tauri::AppHandle;
 
 use ferreus_vault::VaultManager;
 
+use tauri::Manager;
+
 /// Application-display name, used as the vault subdirectory name inside the
 /// OS app-data directory.
 const APP_NAME: &str = "FerreusVault";
@@ -71,15 +73,18 @@ pub struct AppState {
 impl AppState {
     /// Resolves the vault directory, creates it with secure permissions if
     /// absent, and constructs an initial **locked** [`VaultManager`].
-
+    ///
+    /// # Errors
+    /// Returns a `String` error if the OS cannot provide an app-data directory
+    /// or if vault directory creation fails. The error is propagated as a Tauri
+    /// setup error and displayed as a user-facing dialog.
     pub fn new(app: &AppHandle) -> Result<Self, String> {
-        // Resolve the platform-specific app data directory.
-        // `path_resolver().app_data_dir()` returns `None` on platforms where
-        // no suitable directory exists — treat this as a fatal setup error.
+        // `path().app_data_dir()` is the v2 replacement for the v1
+        // `path_resolver().app_data_dir()`. It requires `tauri::Manager` in scope.
         let base_path = app
-            .path_resolver()
+            .path()
             .app_data_dir()
-            .ok_or_else(|| "OS could not resolve the app data directory".to_string())?
+            .map_err(|e| format!("OS could not resolve the app data directory: {e}"))?
             .join(APP_NAME);
 
         // Create the vault directory with correct permissions atomically.
@@ -139,3 +144,5 @@ fn create_vault_dir(path: &std::path::Path) -> Result<(), String> {
 
     Ok(())
 }
+
+//Test-Password - &%NewVaultPAx{22}
