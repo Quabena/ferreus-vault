@@ -80,7 +80,12 @@ export async function addEntry(
   password: string,
   notes: string,
 ): Promise<void> {
-  await invoke<void>("add_entry", { account_name, username, password, notes });
+  await invoke<void>("add_entry", {
+    accountName: account_name,
+    username,
+    password,
+    notes,
+  });
 }
 
 /**
@@ -96,7 +101,7 @@ export async function updateEntry(
 ): Promise<void> {
   await invoke<void>("update_entry", {
     index,
-    account_name: account_name ?? null,
+    accountName: account_name ?? null,
     username: username ?? null,
     password: password ?? null,
     notes: notes ?? null,

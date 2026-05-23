@@ -86,8 +86,8 @@ pub fn list_entries(state: State<AppState>) -> Result<Vec<EntryView>, String> {
 
 /// Adds a new password entry to the unlocked vault.
 ///
-/// The entry is not persisted to disk until `save_vault` is called (which
-/// happens automatically on lock in the current implementation). All string
+/// The entry is persisted before this command returns, so locking or closing
+/// the app immediately after adding an entry does not discard it. All string
 /// parameters are moved directly into the library — no extra heap copy is made
 /// at this layer.
 #[tauri::command]
@@ -110,7 +110,9 @@ pub fn add_entry(
             let entry = PasswordEntry::new(account_name, username, password, notes);
             data.add_entry(entry);
         })
-        .map_err(sanitize_error)
+        .map_err(sanitize_error)?;
+
+    vault.save_vault().map_err(sanitize_error)
 }
 
 /* ─────────────────────────── Update entry ─────────────────────────────── */
@@ -137,7 +139,9 @@ pub fn update_entry(
         // Outer VaultError (e.g. VaultLocked) → sanitized string.
         .map_err(sanitize_error)?
         // Inner VaultError from update_entry (e.g. EntryNotFound) → sanitized string.
-        .map_err(sanitize_error)
+        .map_err(sanitize_error)?;
+
+    vault.save_vault().map_err(sanitize_error)
 }
 
 /* ─────────────────────────── Delete entry ─────────────────────────────── */
@@ -160,7 +164,9 @@ pub fn delete_entry(index: usize, state: State<AppState>) -> Result<(), String> 
         .map_err(sanitize_error)?
         // Inner VaultError from remove_entry (e.g. EntryNotFound).
         .map(|_removed| ()) // discard the returned PasswordEntry
-        .map_err(sanitize_error)
+        .map_err(sanitize_error)?;
+
+    vault.save_vault().map_err(sanitize_error)
 }
 
 /* ─────────────────────────── Error sanitization ───────────────────────── */

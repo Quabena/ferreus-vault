@@ -158,7 +158,8 @@ pub fn start_auto_lock_task(app: AppHandle) -> ShutdownHandle {
             // fails (poisoned mutex), skip the clipboard and event steps so
             // we do not emit a misleading `vault_locked` event.
             let lock_succeeded = match state.vault.lock() {
-                Ok(guard) => {
+                Ok(mut guard) => {
+                    let _ = guard.save_vault();
                     guard.lock_vault();
                     true
                     // `guard` dropped here — clipboard call below is lock-free.

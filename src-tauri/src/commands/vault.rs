@@ -121,10 +121,14 @@ pub fn unlock_vault(password: String, state: State<AppState>) -> Result<(), Stri
 /// different lock — there is no deadlock risk.
 #[tauri::command]
 pub fn lock_vault(state: State<AppState>) -> Result<(), String> {
-    let vault = state
+    let mut vault = state
         .vault
         .lock()
         .map_err(|_| "Internal state error".to_string())?;
+
+    if vault.is_unlocked() {
+        vault.save_vault().map_err(sanitize_error)?;
+    }
 
     vault.lock_vault();
     Ok(())
