@@ -35,8 +35,6 @@ mod tests {
     use serial_test::serial;
     use tempfile::NamedTempFile;
 
-    /* ─────────────────────── Vault lifecycle ──────────────────────────── */
-
     /// Verifies the complete create → lock/unlock → re-lock cycle.
     ///
     /// Specifically asserts:
@@ -83,8 +81,6 @@ mod tests {
         manager.lock_vault();
         assert!(!manager.is_unlocked());
     }
-
-    /* ─────────────────────── Entry persistence ────────────────────────── */
 
     /// Verifies that an entry can be added, updated, persisted, and reloaded.
     ///
@@ -144,8 +140,6 @@ mod tests {
         assert_eq!(name, "Google Mail");
     }
 
-    /* ─────────────────────── Tamper detection ─────────────────────────── */
-
     /// Verifies that bit-flipping the ciphertext causes authentication to fail.
     ///
     /// This exercises the Poly1305 authentication tag: any modification to the
@@ -178,8 +172,6 @@ mod tests {
         );
     }
 
-    /* ─────────────────────── Password strength heuristic ──────────────── */
-
     /// Verifies the password strength scorer against representative inputs.
     ///
     /// Thresholds are intentionally loose to avoid brittleness if the scoring
@@ -199,8 +191,6 @@ mod tests {
             "strong password should score above 80"
         );
     }
-
-    /* ─────────────────────── Auto-lock ────────────────────────────────── */
 
     /// Verifies that `should_auto_lock` returns `true` after the configured
     /// timeout elapses, and that locking clears the unlocked state.
@@ -231,8 +221,6 @@ mod tests {
         manager.lock_vault();
         assert!(!manager.is_unlocked());
     }
-
-    /* ─────────────────────── Secure random generation ─────────────────── */
 
     /// Verifies that `generate_secure_random_string` returns a string of the
     /// requested length containing only alphanumeric characters.

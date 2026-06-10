@@ -93,8 +93,6 @@ pub enum VaultError {
     VaultLocked,
 }
 
-/* ─────────────────────────── Conversions ──────────────────────────────── */
-
 /// Maps Argon2 errors to a generic cryptographic failure.
 ///
 /// Detailed Argon2 diagnostics are retained in the message string for internal

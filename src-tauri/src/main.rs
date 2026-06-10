@@ -48,8 +48,6 @@ use state::AppState;
 use std::sync::Mutex;
 use tauri::Manager;
 
-/* ─────────────────────────── Shutdown State ───────────────────────────── */
-
 /// Tauri-managed wrapper for the auto-lock watchdog's [`ShutdownHandle`].
 ///
 /// Wrapping the handle in `Mutex<Option<_>>` allows `on_window_event` to
@@ -58,8 +56,6 @@ use tauri::Manager;
 pub struct ShutdownState {
     pub handle: Mutex<Option<ShutdownHandle>>,
 }
-
-/* ─────────────────────────── Entry Point ──────────────────────────────── */
 
 fn main() {
     tauri::Builder::default()
@@ -73,11 +69,7 @@ fn main() {
                 .map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
 
             app.manage(state);
-
-            // ── 2. Register clipboard state ────────────────────────────────
             app.manage(ClipboardState::new());
-
-            // ── 3. Start the auto-lock watchdog ────────────────────────────
             //
             // IMPORTANT: The watchdog must be started AFTER `app.manage(state)`
             // and `app.manage(ClipboardState::new())` above. The watchdog
@@ -87,8 +79,6 @@ fn main() {
             // a brief window where auto-lock does not function. Keeping this
             // order avoids the race entirely.
             let handle = auto_lock::start_auto_lock_task(app_handle.clone());
-
-            // ── 4. Store the shutdown handle ───────────────────────────────
             app.manage(ShutdownState {
                 handle: Mutex::new(Some(handle)),
             });

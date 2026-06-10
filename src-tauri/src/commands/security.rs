@@ -32,8 +32,6 @@ use tauri::{AppHandle, Manager, State};
 use crate::clipboard::ClipboardState;
 use crate::state::AppState;
 
-/* ─────────────────────────── Policy bounds ────────────────────────────── */
-
 /// Minimum permitted auto-lock timeout (10 seconds).
 ///
 /// Values below this would lock the vault during normal typing, creating a
@@ -54,8 +52,6 @@ const MAX_TIMEOUT_SECS: u64 = 900;
 /// itself stays unlocked. Passwords on the clipboard are higher-risk than an
 /// open vault because other applications can read the clipboard at any time.
 const MAX_CLIPBOARD_TIMEOUT_SECS: u64 = 60;
-
-/* ─────────────────────────── set_auto_lock_timeout ────────────────────── */
 
 /// Sets the vault inactivity timeout and the clipboard clear timeout.
 ///
@@ -83,8 +79,6 @@ pub fn set_auto_lock_timeout(
             MIN_TIMEOUT_SECS, MAX_TIMEOUT_SECS
         ));
     }
-
-    // ── Update vault timeout ───────────────────────────────────────────────
     {
         let mut vault = state
             .vault
@@ -93,8 +87,6 @@ pub fn set_auto_lock_timeout(
 
         vault.set_auto_lock_timeout(Duration::from_secs(seconds));
     } // Vault mutex released here, before clipboard state is touched.
-
-    // ── Update clipboard timeout ───────────────────────────────────────────
     // `try_state` returns `None` only if ClipboardState was not registered
     // during setup. In production this should never happen; the `if let`
     // degrades gracefully rather than returning an error, since the vault
@@ -105,8 +97,6 @@ pub fn set_auto_lock_timeout(
 
     Ok(())
 }
-
-/* ─────────────────────────── get_auto_lock_timeout ────────────────────── */
 
 /// Returns the current vault inactivity timeout in seconds.
 ///

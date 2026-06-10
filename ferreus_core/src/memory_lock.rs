@@ -37,8 +37,6 @@
 
 use std::io;
 
-/* ─────────────────────────── Feature-enabled implementation ───────────── */
-
 /// RAII guard that keeps a memory region locked in physical RAM.
 ///
 /// Constructed via [`LockedMemory::lock`]; the lock is released when this
@@ -126,8 +124,6 @@ impl Drop for LockedMemory {
         }
     }
 }
-
-/* ─────────────────────────── No-op stub (feature disabled) ────────────── */
 
 /// Zero-sized no-op stub used when the `secure-memory` feature is disabled.
 ///

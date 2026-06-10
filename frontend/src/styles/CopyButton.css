@@ -3,12 +3,14 @@
 .copy-btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 5px;
+  min-width: 82px;
   padding: 3px 10px;
   border-radius: var(--r-sm);
   font-family: var(--font-display);
   font-size: 10px;
-  letter-spacing: 0.08em;
+  letter-spacing: 0;
   text-transform: uppercase;
   cursor: pointer;
   border: 1px solid var(--border-normal);
@@ -27,16 +29,12 @@
   border-color: var(--copper);
   background: rgba(192, 96, 48, 0.08);
 }
-
-/* ── Copied state ───────────────────────────────────────────────────────── */
 .copy-btn--copied {
   color: var(--success);
   border-color: var(--success);
   background: rgba(74, 128, 96, 0.1);
   cursor: default;
 }
-
-/* ── Error state ────────────────────────────────────────────────────────── */
 .copy-btn--error {
   color: var(--danger-bright);
   border-color: var(--danger);

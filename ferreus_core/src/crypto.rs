@@ -42,8 +42,6 @@ use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 use crate::errors::VaultError;
 use crate::memory::SecureBytes;
 
-/* ─────────────────────────── Constants ────────────────────────────────── */
-
 /// Argon2id memory cost in KiB (19 MiB).
 /// Satisfies the OWASP minimum for interactive authentication and the NIST
 /// SP 800-63B high-assurance tier. Increase when latency budget permits.
@@ -74,8 +72,6 @@ const KEY_LENGTH: usize = 32;
 /// Padding aligns vault data to this boundary before encryption so that an
 /// observer measuring ciphertext size cannot infer the number of stored entries.
 const VAULT_BLOCK_SIZE: usize = 4096;
-
-/* ─────────────────────────── MasterKey ────────────────────────────────── */
 
 /// A 32-byte symmetric key and its derivation salt, zeroized on drop.
 ///
@@ -187,8 +183,6 @@ impl MasterKey {
         crate::memory::lock_memory(self.key.as_ptr(), KEY_LENGTH);
     }
 }
-
-/* ─────────────────────────── EncryptedVault ───────────────────────────── */
 
 /// The complete on-disk representation of an encrypted vault.
 ///
@@ -326,8 +320,6 @@ impl EncryptedVault {
     }
 }
 
-/* ─────────────────────────── Password Strength ────────────────────────── */
-
 /// Estimates password entropy as a score in `[0.0, 100.0]`.
 ///
 /// Score = `(length × log₂(charset_size) / 128) × 100`, normalized so that a
@@ -367,8 +359,6 @@ pub fn estimate_password_strength(password: &str) -> f64 {
 
     (length * charset.log2() / 128.0 * 100.0).clamp(0.0, 100.0)
 }
-
-/* ─────────────────────────── Block Padding ────────────────────────────── */
 
 /// Pads `data` to the next multiple of [`VAULT_BLOCK_SIZE`].
 ///
@@ -426,8 +416,6 @@ pub fn unpad_data(data: Vec<u8>) -> Result<Vec<u8>, VaultError> {
     Ok(data[4..4 + orig_len].to_vec())
 }
 
-/* ─────────────────────────── SplitKey ─────────────────────────────────── */
-
 /// An XOR-split guard that holds a 256-bit key across two separate allocations.
 ///
 /// Splitting the key reduces the probability that a partial heap dump or
@@ -483,8 +471,6 @@ impl SplitKey {
     }
 }
 
-/* ─────────────────────────── Device Key Combiner ──────────────────────── */
-
 /// Combines an Argon2id-derived key with a device key using HKDF-SHA256.
 ///
 /// Using HKDF (rather than XOR) ensures that combining a strong password key
@@ -508,8 +494,6 @@ fn combine_keys(password_key: &[u8], device_key: &[u8]) -> Zeroizing<[u8; KEY_LE
         .expect("HKDF expand failed — output length is a compile-time constant");
     out
 }
-
-/* ─────────────────────────── AAD Builder ──────────────────────────────── */
 
 /// Encodes the vault header as a canonical byte sequence for AEAD AAD.
 ///
@@ -537,8 +521,6 @@ fn build_aad(
     aad.extend_from_slice(&generation.to_le_bytes());
     aad
 }
-
-/* ─────────────────────────── Tests ────────────────────────────────────── */
 
 #[cfg(test)]
 mod tests {

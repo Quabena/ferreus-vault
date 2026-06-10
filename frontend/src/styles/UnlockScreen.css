@@ -7,8 +7,6 @@
   width: 100%;
   overflow: hidden;
 }
-
-/* ── Background ─────────────────────────────────────────────────────────── */
 .unlock-bg {
   position: absolute;
   inset: 0;
@@ -38,8 +36,6 @@
     var(--surface-0) 100%
   );
 }
-
-/* ── Panel ──────────────────────────────────────────────────────────────── */
 .unlock-panel {
   position: relative;
   z-index: 1;
@@ -60,16 +56,17 @@
     0 0 40px var(--copper-glow);
 }
 
-/* ── Logo ───────────────────────────────────────────────────────────────── */
+.unlock-panel--status {
+  min-height: 280px;
+  justify-content: center;
+}
 .unlock-logomark {
   margin-bottom: var(--sp-2);
 }
-
-/* ── Text ───────────────────────────────────────────────────────────────── */
 .unlock-title {
   font-size: 20px;
   font-weight: 400;
-  letter-spacing: 0.12em;
+  letter-spacing: 0;
   text-transform: uppercase;
   color: var(--text-primary);
   text-align: center;
@@ -82,8 +79,6 @@
   line-height: 1.5;
   max-width: 260px;
 }
-
-/* ── Form ───────────────────────────────────────────────────────────────── */
 .unlock-form {
   width: 100%;
   display: flex;
@@ -99,7 +94,7 @@
 
 .unlock-label {
   font-size: 10px;
-  letter-spacing: 0.12em;
+  letter-spacing: 0;
   text-transform: uppercase;
   color: var(--text-secondary);
 }
@@ -125,10 +120,8 @@
   padding: var(--sp-3) var(--sp-5);
   margin-top: var(--sp-2);
   font-size: 12px;
-  letter-spacing: 0.14em;
+  letter-spacing: 0;
 }
-
-/* ── Spinner ────────────────────────────────────────────────────────────── */
 .unlock-spinner {
   display: inline-block;
   width: 14px;
@@ -144,11 +137,16 @@
     transform: rotate(360deg);
   }
 }
-
-/* ── Footer ─────────────────────────────────────────────────────────────── */
 .unlock-footer {
   font-size: 11px;
   color: var(--text-dim);
   text-align: center;
   line-height: 1.5;
+}
+
+@media (max-width: 480px) {
+  .unlock-panel {
+    width: calc(100vw - 32px);
+    padding: var(--sp-8) var(--sp-5);
+  }
 }

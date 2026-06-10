@@ -3,8 +3,6 @@
   align-items: center;
   gap: var(--sp-3);
 }
-
-/* ── Timeout badge ──────────────────────────────────────────────────────── */
 .sec-timeout__badge {
   display: inline-flex;
   align-items: center;
@@ -35,8 +33,6 @@
   color: var(--success);
   font-size: 10px;
 }
-
-/* ── Edit form ──────────────────────────────────────────────────────────── */
 .sec-timeout__form {
   display: flex;
   align-items: center;
@@ -71,8 +67,6 @@
   font-size: 10px;
   color: var(--danger-bright);
 }
-
-/* ── Lock button ────────────────────────────────────────────────────────── */
 .sec-lock-btn {
   font-size: 11px;
   padding: 4px 10px;

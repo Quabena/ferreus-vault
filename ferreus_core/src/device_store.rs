@@ -107,8 +107,6 @@ impl DeviceKeyStore {
     }
 }
 
-/* ─────────────────────────── Helpers ──────────────────────────────────── */
-
 /// Writes `data` to `path` with mode 0o600 on Unix (owner read/write only).
 ///
 /// On non-Unix platforms, falls back to [`fs::write`] without setting
@@ -139,8 +137,6 @@ fn write_private_file(path: &std::path::Path, data: &[u8]) -> io::Result<()> {
 
     Ok(())
 }
-
-/* ─────────────────────────── Tests ────────────────────────────────────── */
 
 #[cfg(test)]
 mod tests {

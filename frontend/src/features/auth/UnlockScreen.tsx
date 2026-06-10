@@ -10,6 +10,7 @@ import "../../styles/UnlockScreen.css";
 
 export function UnlockScreen() {
   const vaultExists = useVaultStore((s) => s.vaultExists);
+  const hasCheckedStatus = useVaultStore((s) => s.hasCheckedStatus);
   const isLoading = useVaultStore((s) => s.isLoading);
   const error = useVaultStore((s) => s.error);
   const unlock = useVaultStore((s) => s.unlock);
@@ -71,6 +72,54 @@ export function UnlockScreen() {
 
   // FIX 5: moved inside the component
   const displayError = localError ?? error;
+
+  if (!hasCheckedStatus) {
+    return (
+      <div className="unlock-root">
+        <div className="unlock-bg" aria-hidden="true">
+          <div className="unlock-bg__grid" />
+          <div className="unlock-bg__vignette" />
+        </div>
+
+        <div className="unlock-panel unlock-panel--status animate-scale-in">
+          <div className="unlock-logomark" aria-hidden="true">
+            <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+              <rect
+                x="6"
+                y="10"
+                width="36"
+                height="28"
+                rx="3"
+                stroke="var(--copper)"
+                strokeWidth="2"
+              />
+              <rect
+                x="14"
+                y="18"
+                width="20"
+                height="14"
+                rx="2"
+                stroke="var(--copper-bright)"
+                strokeWidth="1.5"
+              />
+              <circle cx="24" cy="25" r="3" fill="var(--copper)" />
+              <line
+                x1="24"
+                y1="28"
+                x2="24"
+                y2="32"
+                stroke="var(--copper)"
+                strokeWidth="1.5"
+              />
+            </svg>
+          </div>
+          <h1 className="unlock-title text-display">Ferreus Vault</h1>
+          <p className="unlock-subtitle">Checking vault status...</p>
+          <span className="unlock-spinner" aria-label="Checking vault status" />
+        </div>
+      </div>
+    );
+  }
 
   // FIX 5: return statement moved inside the component
   return (

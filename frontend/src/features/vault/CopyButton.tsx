@@ -39,7 +39,7 @@ export function CopyButton({ entryIndex, label = "Copy" }: CopyButtonProps) {
       disabled={state !== "idle"}
       title={
         state === "copied"
-          ? "Copied - clears in 20s"
+          ? "Copied to clipboard"
           : state === "error"
             ? "Copy failed"
             : "Copy password to clipboard"

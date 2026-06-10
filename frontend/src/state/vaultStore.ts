@@ -23,21 +23,19 @@ import { create } from "zustand";
 import * as api from "../lib/api";
 import type { EntryView } from "../lib/api";
 
-/* ─────────────────────────── State shape ───────────────────────────────── */
-
 export interface VaultState {
   /** Whether a vault file exists on disk. */
   vaultExists: boolean;
   /** Whether the vault is currently unlocked and data is in memory. */
   isUnlocked: boolean;
+  /** True after the initial backend status check has completed. */
+  hasCheckedStatus: boolean;
   /** Password-free entry list, mirrors backend state when unlocked. */
   entries: EntryView[];
   /** True during any async IPC operation. Used to disable UI controls. */
   isLoading: boolean;
   /** Last error message from a failed IPC call; null when no error. */
   error: string | null;
-
-  /* ── Actions ─────────────────────────────────────────────────────────── */
 
   /** Fetches vault_status from the backend and syncs local state. */
   fetchStatus: () => Promise<void>;
@@ -77,16 +75,13 @@ export interface VaultState {
   handleAutoLock: () => void;
 }
 
-/* ─────────────────────────── Store ─────────────────────────────────────── */
-
 export const useVaultStore = create<VaultState>((set, get) => ({
   vaultExists: false,
   isUnlocked: false,
+  hasCheckedStatus: false,
   entries: [],
   isLoading: false,
   error: null,
-
-  /* ── fetchStatus ───────────────────────────────────────────────────── */
   fetchStatus: async () => {
     set({ isLoading: true, error: null });
     try {
@@ -94,6 +89,7 @@ export const useVaultStore = create<VaultState>((set, get) => ({
       set({
         vaultExists: status.vault_exists,
         isUnlocked: status.unlocked,
+        hasCheckedStatus: true,
         isLoading: false,
       });
       // If already unlocked (e.g., a hot-reload during development), sync entries.
@@ -101,11 +97,9 @@ export const useVaultStore = create<VaultState>((set, get) => ({
         await get().refreshEntries();
       }
     } catch (e) {
-      set({ isLoading: false, error: String(e) });
+      set({ hasCheckedStatus: true, isLoading: false, error: String(e) });
     }
   },
-
-  /* ── createVault ───────────────────────────────────────────────────── */
   createVault: async (password: string) => {
     set({ isLoading: true, error: null });
     try {
@@ -116,8 +110,6 @@ export const useVaultStore = create<VaultState>((set, get) => ({
       throw e;
     }
   },
-
-  /* ── unlock ────────────────────────────────────────────────────────── */
   unlock: async (password: string) => {
     set({ isLoading: true, error: null });
     try {
@@ -130,8 +122,6 @@ export const useVaultStore = create<VaultState>((set, get) => ({
       throw e;
     }
   },
-
-  /* ── lock ──────────────────────────────────────────────────────────── */
   lock: async () => {
     set({ isLoading: true, error: null });
     try {
@@ -142,8 +132,6 @@ export const useVaultStore = create<VaultState>((set, get) => ({
       set({ isLoading: false, error: String(e) });
     }
   },
-
-  /* ── refreshEntries ────────────────────────────────────────────────── */
   refreshEntries: async () => {
     try {
       const entries = await api.listEntries();
@@ -152,8 +140,6 @@ export const useVaultStore = create<VaultState>((set, get) => ({
       set({ error: String(e) });
     }
   },
-
-  /* ── addEntry ──────────────────────────────────────────────────────── */
   addEntry: async (
     accountName: string,
     username: string,
@@ -171,8 +157,6 @@ export const useVaultStore = create<VaultState>((set, get) => ({
       throw e;
     }
   },
-
-  /* ── updateEntry ───────────────────────────────────────────────────── */
   updateEntry: async (
     index: number,
     accountName?: string,
@@ -190,8 +174,6 @@ export const useVaultStore = create<VaultState>((set, get) => ({
       throw e;
     }
   },
-
-  /* ── deleteEntry ───────────────────────────────────────────────────── */
   deleteEntry: async (index: number) => {
     set({ isLoading: true, error: null });
     try {
@@ -203,20 +185,15 @@ export const useVaultStore = create<VaultState>((set, get) => ({
       throw e;
     }
   },
-
-  /* ── copyPassword ──────────────────────────────────────────────────── */
   copyPassword: async (index: number) => {
     try {
       await api.copyPassword(index);
     } catch (e) {
       set({ error: String(e) });
+      throw e;
     }
   },
-
-  /* ── clearError ────────────────────────────────────────────────────── */
   clearError: () => set({ error: null }),
-
-  /* ── handleAutoLock ────────────────────────────────────────────────── */
   handleAutoLock: () => {
     // Sync frontend state when the backend watchdog fires vault_locked.
     // No IPC call needed — the backend has already locked the vault.

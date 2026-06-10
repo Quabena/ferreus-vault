@@ -37,8 +37,6 @@ use crate::state::AppState;
 use ferreus_vault::errors::VaultError;
 use ferreus_vault::vault::PasswordEntry;
 
-/* ─────────────────────────── Safe IPC View ────────────────────────────── */
-
 #[derive(Serialize)]
 pub struct EntryView {
     /// Zero-based index used to address this entry in update/delete/copy operations.
@@ -51,8 +49,6 @@ pub struct EntryView {
     pub notes: String,
     // `password` is deliberately absent — use `copy_password` instead.
 }
-
-/* ─────────────────────────── List entries ──────────────────────────────── */
 
 /// Returns a list of all vault entries with the password field omitted.
 ///
@@ -81,8 +77,6 @@ pub fn list_entries(state: State<AppState>) -> Result<Vec<EntryView>, String> {
         })
         .map_err(sanitize_error)
 }
-
-/* ─────────────────────────── Add entry ────────────────────────────────── */
 
 /// Adds a new password entry to the unlocked vault.
 ///
@@ -115,8 +109,6 @@ pub fn add_entry(
     vault.save_vault().map_err(sanitize_error)
 }
 
-/* ─────────────────────────── Update entry ─────────────────────────────── */
-
 /// Updates selected fields of the entry at `index`.
 ///
 /// Passing `None` for a field leaves it unchanged.
@@ -144,8 +136,6 @@ pub fn update_entry(
     vault.save_vault().map_err(sanitize_error)
 }
 
-/* ─────────────────────────── Delete entry ─────────────────────────────── */
-
 /// Removes the entry at `index` from the unlocked vault.
 #[tauri::command]
 pub fn delete_entry(index: usize, state: State<AppState>) -> Result<(), String> {
@@ -168,8 +158,6 @@ pub fn delete_entry(index: usize, state: State<AppState>) -> Result<(), String> 
 
     vault.save_vault().map_err(sanitize_error)
 }
-
-/* ─────────────────────────── Error sanitization ───────────────────────── */
 
 /// Maps internal [`VaultError`] variants to safe, user-facing strings.
 ///

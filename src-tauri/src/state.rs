@@ -105,8 +105,6 @@ impl AppState {
     }
 }
 
-/* ─────────────────────────── Directory Creation ───────────────────────── */
-
 /// Creates `path` as a directory with secure permissions.
 ///
 /// On Unix, the directory is created with mode `0o700` (owner read/write/

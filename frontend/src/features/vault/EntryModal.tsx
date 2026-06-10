@@ -26,6 +26,18 @@ interface EntryModalProps {
   onClose: () => void;
 }
 
+const PASSWORD_CHARS =
+  "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*()-_=+";
+
+function generatePassword(length = 20) {
+  const values = new Uint32Array(length);
+  window.crypto.getRandomValues(values);
+  return Array.from(
+    values,
+    (value) => PASSWORD_CHARS[value % PASSWORD_CHARS.length],
+  ).join("");
+}
+
 export function EntryModal({ entry, onClose }: EntryModalProps) {
   const isEdit = entry !== null;
   const { addEntry, updateEntry, isLoading } = useVault();
@@ -85,6 +97,12 @@ export function EntryModal({ entry, onClose }: EntryModalProps) {
     } catch (e) {
       setLocalError(String(e));
     }
+  };
+
+  const handleGeneratePassword = () => {
+    setPassword(generatePassword());
+    setShowPw(true);
+    setLocalError(null);
   };
 
   return (
@@ -160,11 +178,31 @@ export function EntryModal({ entry, onClose }: EntryModalProps) {
 
           {/* Password */}
           <div className="modal-field">
-            <label className="modal-label" htmlFor="m-password">
-              {isEdit
-                ? "New password (leave blank to keep current)"
-                : "Password"}
-            </label>
+            <div className="modal-label-row">
+              <label className="modal-label" htmlFor="m-password">
+                {isEdit ? "New password" : "Password"}
+              </label>
+              <button
+                type="button"
+                className="modal-generate-btn"
+                onClick={handleGeneratePassword}
+                disabled={isLoading}
+                title="Generate strong password"
+              >
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <path d="M21 12a9 9 0 11-2.64-6.36" />
+                  <path d="M21 3v6h-6" />
+                </svg>
+                Generate
+              </button>
+            </div>
             <div className="modal-pw-wrap">
               <input
                 id="m-password"
@@ -172,7 +210,7 @@ export function EntryModal({ entry, onClose }: EntryModalProps) {
                 type={showPw ? "text" : "password"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder={isEdit ? "Enter to replace…" : "Required"}
+                placeholder={isEdit ? "Leave blank to keep current" : "Required"}
                 autoComplete={isEdit ? "new-password" : "new-password"}
                 disabled={isLoading}
                 required={!isEdit}

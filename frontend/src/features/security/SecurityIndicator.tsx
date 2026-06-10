@@ -100,7 +100,7 @@ export function SecurityIndicator() {
               onBlur={() => setEditing(false)}
               onKeyDown={(e) => e.key === "Escape" && setEditing(false)}
             />
-            <span className="set-timeout__unit">s</span>
+            <span className="sec-timeout__unit">s</span>
             {saveError && <span className="sec-timeout__err">{saveError}</span>}
           </form>
         )}

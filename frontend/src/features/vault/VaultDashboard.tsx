@@ -9,6 +9,7 @@ import type { EntryView } from "../../lib/api";
 import { useVault } from "./useVault";
 import { EntryList } from "./EntryList";
 import { EntryModal } from "./EntryModal";
+import { AboutDrawer } from "./AboutDrawer";
 import { SecurityIndicator } from "../security/SecurityIndicator";
 import "../../styles/VaultDashboard.css";
 
@@ -17,14 +18,28 @@ export function VaultDashboard() {
   const [modalEntry, setModalEntry] = useState<EntryView | null | undefined>(
     undefined, // undefined = modal closed; null = add mode; EntryView = edit mode
   );
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   const isModalOpen = modalEntry !== undefined;
+  const entryLabel =
+    entries.length === 0
+      ? "No entries"
+      : entries.length === 1
+        ? "1 entry"
+        : `${entries.length} entries`;
 
   return (
     <div className="dashboard-root">
       {/* ---- Header ---- */}
       <header className="dashboard-header">
-        <div className="dashboard-brand">
+        <button
+          type="button"
+          className="dashboard-brand"
+          onClick={() => setDrawerOpen(true)}
+          aria-label="Open About Ferreus Vault"
+          aria-controls="about-drawer"
+          aria-expanded={drawerOpen}
+        >
           <svg
             width="18"
             height="18"
@@ -63,9 +78,30 @@ export function VaultDashboard() {
           <span className="dashboard-brand-name text-display">
             Ferreus Vault
           </span>
-        </div>
+        </button>
         <SecurityIndicator />
       </header>
+
+      <section className="dashboard-status" aria-label="Vault status">
+        <div className="dashboard-status__item">
+          <span className="dashboard-status__label">Vault</span>
+          <strong className="dashboard-status__value dashboard-status__value--secure">
+            Unlocked
+          </strong>
+        </div>
+        <div className="dashboard-status__item">
+          <span className="dashboard-status__label">Storage</span>
+          <strong className="dashboard-status__value">Local encrypted</strong>
+        </div>
+        <div className="dashboard-status__item">
+          <span className="dashboard-status__label">Clipboard</span>
+          <strong className="dashboard-status__value">Auto-clear ready</strong>
+        </div>
+        <div className="dashboard-status__item dashboard-status__item--end">
+          <span className="dashboard-status__label">Records</span>
+          <strong className="dashboard-status__value">{entryLabel}</strong>
+        </div>
+      </section>
 
       {/* ---- Toolbar ---- */}
       <div className="dashboard-toolbar">
@@ -87,13 +123,7 @@ export function VaultDashboard() {
           New entry
         </button>
 
-        <span className="dashboard-count">
-          {entries.length === 0
-            ? "No entries"
-            : entries.length === 1
-              ? "1 entry"
-              : `${entries.length} entries`}
-        </span>
+        <span className="dashboard-count">{entryLabel}</span>
       </div>
 
       {/* ---- Global error banner ---- */}
@@ -115,7 +145,10 @@ export function VaultDashboard() {
 
       {/* ---- Entry list ---- */}
       <main className="dashboard-content">
-        <EntryList onEdit={(entry) => setModalEntry(entry)} />
+        <EntryList
+          onAdd={() => setModalEntry(null)}
+          onEdit={(entry) => setModalEntry(entry)}
+        />
       </main>
 
       {/* Entry modal */}
@@ -125,6 +158,8 @@ export function VaultDashboard() {
           onClose={() => setModalEntry(undefined)}
         />
       )}
+
+      <AboutDrawer isOpen={drawerOpen} onClose={() => setDrawerOpen(false)} />
     </div>
   );
 }

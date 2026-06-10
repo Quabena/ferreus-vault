@@ -13,10 +13,11 @@ import { CopyButton } from "./CopyButton";
 import "../../styles/EntryList.css";
 
 interface EntryListProps {
+  onAdd: () => void;
   onEdit: (entry: EntryView) => void;
 }
 
-export function EntryList({ onEdit }: EntryListProps) {
+export function EntryList({ onAdd, onEdit }: EntryListProps) {
   const { entries, isEmpty, deleteEntry, isLoading } = useVault();
   const [search, setSearch] = useState("");
   const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
@@ -90,8 +91,26 @@ export function EntryList({ onEdit }: EntryListProps) {
           </svg>
           <p>No entries yet.</p>
           <p className="entry-empty__sub">
-            Add your first entry with the button above
+            Start with a login you can safely test during the pitch.
           </p>
+          <button
+            className="fv-btn fv-btn-primary entry-empty__action"
+            onClick={onAdd}
+            disabled={isLoading}
+          >
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+            >
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            Add entry
+          </button>
         </div>
       )}
 
@@ -114,7 +133,7 @@ export function EntryList({ onEdit }: EntryListProps) {
             <div className="entry-info">
               <span className="entry-account">{entry.account_name}</span>
               {entry.username && (
-                <span className="entry-surname">{entry.username}</span>
+                <span className="entry-username">{entry.username}</span>
               )}
               {entry.notes && (
                 <span className="entry-notes-preview">

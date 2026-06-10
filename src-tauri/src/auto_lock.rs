@@ -56,8 +56,6 @@ use crate::state::AppState;
 /// measurable CPU overhead on idle hardware.
 const POLL_INTERVAL: Duration = Duration::from_secs(2);
 
-/* ─────────────────────────── Shutdown Handle ──────────────────────────── */
-
 /// A handle that allows the caller to stop the auto-lock watchdog thread.
 ///
 /// Dropping this handle does **not** stop the thread. Call
@@ -86,8 +84,6 @@ impl ShutdownHandle {
         self.flag.store(true, Ordering::SeqCst);
     }
 }
-
-/* ─────────────────────────── Watchdog ─────────────────────────────────── */
 
 /// Spawns the auto-lock watchdog thread and returns a [`ShutdownHandle`].
 ///
@@ -127,8 +123,6 @@ pub fn start_auto_lock_task(app: AppHandle) -> ShutdownHandle {
                 Some(s) => s,
                 None => continue,
             };
-
-            // ── Step 1: Check auto-lock under a brief guard ────────────────
             //
             // The guard is intentionally scoped to this block so it is
             // dropped before step 2. Holding it across `lock_vault` would
@@ -151,8 +145,6 @@ pub fn start_auto_lock_task(app: AppHandle) -> ShutdownHandle {
             if !should_lock {
                 continue;
             }
-
-            // ── Step 2: Lock the vault ─────────────────────────────────────
             //
             // Re-acquire the mutex now that we hold no guard. If locking
             // fails (poisoned mutex), skip the clipboard and event steps so
@@ -175,8 +167,6 @@ pub fn start_auto_lock_task(app: AppHandle) -> ShutdownHandle {
             if !lock_succeeded {
                 continue;
             }
-
-            // ── Step 3: Clear the clipboard ────────────────────────────────
             //
             // Only clears if we currently own the clipboard contents (i.e.,
             // a password we wrote is still there). If the user or another
@@ -184,8 +174,6 @@ pub fn start_auto_lock_task(app: AppHandle) -> ShutdownHandle {
             if let Some(clipboard) = app.try_state::<ClipboardState>() {
                 clipboard.clear_if_owned();
             }
-
-            // ── Step 4: Notify the frontend ────────────────────────────────
             //
             // The `vault_locked` event causes the UI to transition to the
             // locked screen. Emit errors are intentionally ignored — the

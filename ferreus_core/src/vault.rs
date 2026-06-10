@@ -43,8 +43,6 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::errors::VaultError;
 
-/* ─────────────────────────── Password Entry ───────────────────────────── */
-
 /// A single credential record stored in the vault.
 ///
 /// # Zeroization policy
@@ -164,8 +162,6 @@ impl PasswordEntry {
         }
     }
 }
-
-/* ─────────────────────────── VaultData ────────────────────────────────── */
 
 /// The top-level plaintext vault container.
 ///

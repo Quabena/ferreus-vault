@@ -38,8 +38,6 @@ use crate::state::AppState;
 use ferreus_vault::errors::VaultError;
 use ferreus_vault::validate_master_password;
 
-/* ─────────────────────────── Response types ───────────────────────────── */
-
 /// Vault status payload returned by [`vault_status`].
 #[derive(Serialize)]
 pub struct VaultStatus {
@@ -48,8 +46,6 @@ pub struct VaultStatus {
     /// Whether a vault file exists on disk (i.e., the vault has been created).
     pub vault_exists: bool,
 }
-
-/* ─────────────────────────── create_vault ─────────────────────────────── */
 
 /// Creates a new vault protected by `password`.
 ///
@@ -79,8 +75,6 @@ pub fn create_vault(password: String, state: State<AppState>) -> Result<(), Stri
     // an operation that runs at most once per device lifetime.
 }
 
-/* ─────────────────────────── unlock_vault ─────────────────────────────── */
-
 /// Decrypts the vault and loads it into memory using `password`.
 ///
 /// On success, the vault is unlocked and entry commands become available.
@@ -104,8 +98,6 @@ pub fn unlock_vault(password: String, state: State<AppState>) -> Result<(), Stri
         .unlock_vault(&password)
         .map_err(|_| "Invalid password or corrupted vault".to_string())
 }
-
-/* ─────────────────────────── lock_vault ───────────────────────────────── */
 
 /// Locks the vault, dropping and zeroizing all in-memory key material and
 /// decrypted vault data.
@@ -135,8 +127,6 @@ pub fn lock_vault(state: State<AppState>) -> Result<(), String> {
     // Outer guard released here; `lock_vault` has already dropped the inner guards.
 }
 
-/* ─────────────────────────── vault_status ─────────────────────────────── */
-
 /// Returns the current vault status for the frontend.
 ///
 /// Used on startup and after unlock/lock operations to keep the UI in sync
@@ -158,8 +148,6 @@ pub fn vault_status(state: State<AppState>) -> Result<VaultStatus, String> {
         vault_exists,
     })
 }
-
-/* ─────────────────────────── Error sanitization ───────────────────────── */
 
 /// Maps internal [`VaultError`] variants to safe, generic user-facing strings.
 ///

@@ -134,8 +134,6 @@ impl SecureBuffer {
     }
 }
 
-/* ─────────────────────────── Secure Random Generation ─────────────────── */
-
 /// Generates a cryptographically secure random alphanumeric string.
 ///
 /// Uses [`OsRng`] to ensure randomness originates from the operating system
@@ -174,8 +172,6 @@ pub fn generate_secure_random_bytes(length: usize) -> SecureBytes {
     SecureBytes::new(buffer)
 }
 
-/* ─────────────────────────── Constant-time Comparison ─────────────────── */
-
 /// Compares two byte slices in constant time.
 ///
 /// Execution time does not depend on the data values, preventing timing attacks
@@ -188,8 +184,6 @@ pub fn generate_secure_random_bytes(length: usize) -> SecureBytes {
 pub fn constant_time_compare(a: &[u8], b: &[u8]) -> bool {
     a.ct_eq(b).into()
 }
-
-/* ─────────────────────────── OS Memory Locking ────────────────────────── */
 
 /// Locks the memory region at `ptr` of `len` bytes against swapping.
 ///
@@ -239,8 +233,6 @@ pub fn unlock_memory(ptr: *const u8, len: usize) {
         let _ = VirtualUnlock(ptr as *mut _, len);
     }
 }
-
-/* ─────────────────────────── Tests ────────────────────────────────────── */
 
 #[cfg(test)]
 mod tests {

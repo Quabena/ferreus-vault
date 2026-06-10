@@ -21,7 +21,7 @@ export function AuthGate({ children }: AuthGateProps) {
   // Fetch vault status once on mount so the screen is shown immediately
   useEffect(() => {
     fetchStatus();
-  }, []);
+  }, [fetchStatus]);
 
   if (!isUnlocked) {
     return <UnlockScreen />;

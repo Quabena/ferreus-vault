@@ -39,8 +39,6 @@ use crate::state::AppState;
 
 use ferreus_vault::errors::VaultError;
 
-/* ─────────────────────────── copy_to_clipboard ────────────────────────── */
-
 /// Writes `content` to the system clipboard and schedules an auto-clear.
 ///
 /// The auto-clear fires after the timeout configured in
@@ -63,8 +61,6 @@ pub fn copy_to_clipboard(content: String, app: AppHandle) -> Result<(), String> 
     // because it arrived from the IPC deserializer and we have no control over
     // prior copies in the IPC buffer).
 }
-
-/* ─────────────────────────── copy_password ────────────────────────────── */
 
 /// Copies the password of the vault entry at `index` to the clipboard.
 ///
@@ -111,8 +107,6 @@ pub fn copy_password(index: usize, state: State<AppState>, app: AppHandle) -> Re
     // `Zeroizing<String>` from `get_entry` in the library layer.
     result
 }
-
-/* ─────────────────────────── Error sanitization ───────────────────────── */
 
 /// Maps internal `VaultError` variants to safe, user-facing strings.
 ///

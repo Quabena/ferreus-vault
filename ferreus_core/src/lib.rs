@@ -59,8 +59,6 @@ use crate::errors::VaultError;
 use crate::storage::VaultStorage;
 use crate::vault::VaultData;
 
-/* ─────────────────────────── Vault Manager ────────────────────────────── */
-
 /// Top-level runtime controller for a single vault file.
 ///
 /// Owns the in-memory decrypted vault state, enforces the lock/unlock
@@ -155,8 +153,6 @@ impl VaultManager {
         }
     }
 
-    /* ─────────────────────── Vault Creation ───────────────────────────── */
-
     /// Creates and persists a new, empty vault encrypted with `password`.
     ///
     /// The vault is created in a **locked** state; call
@@ -178,8 +174,6 @@ impl VaultManager {
         // device keys, so `&[]` is the correct value here.
         self.storage.create_vault(password, &vault_data, &[])
     }
-
-    /* ─────────────────────── Unlocking ────────────────────────────────── */
 
     /// Attempts to decrypt and load the vault into memory.
     ///
@@ -275,8 +269,6 @@ impl VaultManager {
         Ok(())
     }
 
-    /* ─────────────────────── Locking ──────────────────────────────────── */
-
     /// Locks the vault, dropping and zeroizing all in-memory key material and
     /// plaintext vault data.
     ///
@@ -299,8 +291,6 @@ impl VaultManager {
     pub fn is_unlocked(&self) -> bool {
         self.vault_data.lock().map(|v| v.is_some()).unwrap_or(false)
     }
-
-    /* ─────────────────────── Persistence ──────────────────────────────── */
 
     /// Serialises, re-encrypts, and atomically writes the vault to disk.
     ///
@@ -326,7 +316,6 @@ impl VaultManager {
     //   4. Call MasterKey::from_bytes (no KDF — just wraps existing material).
     //   5. Encrypt outside the lock.
     pub fn save_vault(&mut self) -> Result<(), VaultError> {
-        // ── Step 1: Gather everything needed for encryption under the locks ──
         //
         // We hold the guards only long enough to copy the key bytes, salt, and
         // serialised data out. All expensive operations (encryption, I/O) happen
@@ -357,15 +346,11 @@ impl VaultManager {
             (serialized, key_bytes, salt)
             // All three guards are released here.
         };
-
-        // ── Step 2: Rebuild a MasterKey from the reconstructed bytes ─────────
         //
         // MasterKey::from_bytes wraps existing key material without running
         // the KDF — correct here because the key was already derived at unlock
         // time and stored as split shares.
         let master_key = MasterKey::from_bytes(*key_bytes, salt);
-
-        // ── Step 3: Increment generation and encrypt ─────────────────────────
         //
         // Incrementing before the encrypt call means the first save after
         // unlock uses generation 1, not 0 (which was used at vault creation).
@@ -373,15 +358,11 @@ impl VaultManager {
 
         let encrypted =
             EncryptedVault::encrypt(&serialized, &master_key, self.save_generation)?.to_bytes()?;
-
-        // ── Step 4: Write atomically ─────────────────────────────────────────
         self.storage.save_vault(&encrypted)?;
         self.touch();
 
         Ok(())
     }
-
-    /* ─────────────────────── Vault Operations ─────────────────────────── */
 
     /// Executes a closure against the decrypted [`VaultData`], returning its
     /// result.
@@ -413,8 +394,6 @@ impl VaultManager {
         result
     }
 
-    /* ─────────────────────── Auto-lock ────────────────────────────────── */
-
     /// Returns `true` if the vault is unlocked and the inactivity timeout has
     /// elapsed since the last recorded activity.
     ///
@@ -438,8 +417,6 @@ impl VaultManager {
     pub fn auto_lock_timeout(&self) -> Duration {
         self.auto_lock_timeout
     }
-
-    /* ─────────────────────── Helpers ──────────────────────────────────── */
 
     /// Acquires the `vault_data` mutex, mapping a poison error to
     /// [`VaultError::VaultLocked`].
@@ -486,8 +463,6 @@ impl Drop for VaultManager {
         self.lock_vault();
     }
 }
-
-/* ─────────────────────────── Password Validation ──────────────────────── */
 
 /// Validates that `password` meets the minimum strength requirements for a
 /// vault master password.

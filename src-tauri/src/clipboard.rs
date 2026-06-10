@@ -52,8 +52,6 @@ use arboard::Clipboard;
 use sha2::{Digest, Sha256};
 use subtle::ConstantTimeEq;
 
-/* ─────────────────────────── Internal State ───────────────────────────── */
-
 /// Shared mutable state protected by a `Mutex` inside [`ClipboardState`].
 struct InnerClipboardState {
     /// SHA-256 of the last content written to the clipboard by this
@@ -77,8 +75,6 @@ struct InnerClipboardState {
     /// not panic.
     generation: u64,
 }
-
-/* ─────────────────────────── Public API ───────────────────────────────── */
 
 /// Manages secure clipboard write, ownership tracking, and auto-clear.
 ///
@@ -227,7 +223,6 @@ impl ClipboardState {
     /// hold the clipboard seat), this method clears unconditionally rather than
     /// leaving a potentially sensitive value in place.
     pub fn clear_if_owned(&self) {
-        // ── Step 1: Read stored hash under the lock, then release ──────────
         //
         // We must release the lock before the clipboard call because
         // `Clipboard::new()` / `get_text()` can block, and holding the mutex
@@ -244,8 +239,6 @@ impl ClipboardState {
             }
             // `state` guard dropped here.
         };
-
-        // ── Step 2: Read current clipboard content (lock-free) ─────────────
         let mut clipboard = match Clipboard::new() {
             Ok(c) => c,
             Err(_) => return,
@@ -268,8 +261,6 @@ impl ClipboardState {
             hasher.update(current_text.as_bytes());
             hasher.finalize().into()
         };
-
-        // ── Step 3: Compare and clear ──────────────────────────────────────
         if stored_hash.ct_eq(&current_hash).into() {
             let _ = clipboard.set_text("");
             // Re-acquire to clear the stored hash only after a successful clear.

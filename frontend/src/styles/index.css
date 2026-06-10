@@ -6,14 +6,8 @@
  * monospace typography. A vault should feel like a physical safe, not a SaaS
  * dashboard. Clean, heavy, deliberate.
  *
- * Font stack:
- *   Display / headings : "Syne Mono" (Google Fonts) — geometric monospace
- *   Body / UI          : "DM Mono" (Google Fonts) — readable mono
+ * Uses system fonts so demos do not depend on a remote font request.
  */
-
-@import url("https://fonts.googleapis.com/css2?family=Syne+Mono&family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&display=swap");
-
-/* ─────────────────────────── Design tokens ─────────────────────────────── */
 :root {
   /* Surfaces */
   --surface-0: #0c0c0e; /* deepest background */
@@ -31,20 +25,26 @@
   --copper: #c06030;
   --copper-bright: #e07840;
   --copper-glow: rgba(192, 96, 48, 0.25);
+  --steel: #6f8ea3;
+  --steel-bright: #9ab5c8;
+  --secure: #56a07a;
+  --secure-glow: rgba(86, 160, 122, 0.18);
 
   /* Semantic */
   --text-primary: #e8e2d8;
   --text-secondary: #8a8070;
   --text-dim: #4a4440;
 
-  --success: #4a8060;
+  --success: #56a07a;
   --danger: #a04040;
   --danger-bright: #d05050;
   --warning: #8a6020;
 
   /* Typography */
-  --font-display: "Syne Mono", "Courier New", monospace;
-  --font-body: "DM Mono", "Courier New", monospace;
+  --font-display:
+    "Segoe UI", Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-body:
+    "Segoe UI", Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
 
   /* Spacing scale (8px base) */
   --sp-1: 4px;
@@ -70,8 +70,6 @@
   --dur-mid: 240ms;
   --dur-slow: 400ms;
 }
-
-/* ─────────────────────────── Reset ─────────────────────────────────────── */
 *,
 *::before,
 *::after {
@@ -119,18 +117,14 @@ textarea {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--copper);
 }
-
-/* ─────────────────────────── Typography helpers ────────────────────────── */
 .text-display {
   font-family: var(--font-display);
-  letter-spacing: 0.04em;
+  letter-spacing: 0;
 }
 
 .text-mono {
   font-family: var(--font-body);
 }
-
-/* ─────────────────────────── Utility classes ───────────────────────────── */
 .sr-only {
   position: absolute;
   width: 1px;
@@ -142,8 +136,6 @@ textarea {
   white-space: nowrap;
   border-width: 0;
 }
-
-/* ─────────────────────────── Shared form elements ──────────────────────── */
 .fv-input {
   width: 100%;
   background: var(--surface-0);
@@ -172,8 +164,6 @@ textarea {
   opacity: 0.4;
   cursor: not-allowed;
 }
-
-/* ─────────────────────────── Buttons ───────────────────────────────────── */
 .fv-btn {
   display: inline-flex;
   align-items: center;
@@ -182,7 +172,7 @@ textarea {
   border-radius: var(--r-sm);
   font-family: var(--font-display);
   font-size: 11px;
-  letter-spacing: 0.1em;
+  letter-spacing: 0;
   text-transform: uppercase;
   cursor: pointer;
   border: 1px solid transparent;
@@ -247,8 +237,6 @@ textarea {
   background: var(--surface-3);
   border-radius: var(--r-sm);
 }
-
-/* ─────────────────────────── Error banner ──────────────────────────────── */
 .fv-error {
   background: rgba(160, 64, 64, 0.12);
   border: 1px solid var(--danger);
@@ -257,8 +245,6 @@ textarea {
   font-size: 12px;
   padding: var(--sp-2) var(--sp-4);
 }
-
-/* ─────────────────────────── Animations ────────────────────────────────── */
 @keyframes fv-fade-in {
   from {
     opacity: 0;
