@@ -64,7 +64,7 @@ If you discover a security vulnerability:
    - Steps to reproduce (if applicable)
    - Potential impact
 
-Email: web4adu@gmail.com
+Email: ferreusvault@gmail.com
 
 We aim to acknowledge reports within **72 hours**.
 
