@@ -13,10 +13,16 @@
     "frontendDist": "../frontend/dist"
   },
 
+  "bundle": {
+    "active": true,
+    "targets": ["msi"],
+    "icon": ["icons/icon.ico"]
+  },
+
   "app": {
     "windows": [
       {
-        "title": "Ferreus Vault",
+        "title": "Ferreus Vault V1.0.0",
         "width": 1200,
         "height": 800
       }
